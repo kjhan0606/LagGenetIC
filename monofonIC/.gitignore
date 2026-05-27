@@ -15,3 +15,6 @@ external/panphasia/rand.mod
 tests/configs/*.txt
 tests/configs/transfer/*.txt
 tests/configs/transfer/*.ini
+tests/scripts/__pycache__/
+__pycache__/
+Testing/
