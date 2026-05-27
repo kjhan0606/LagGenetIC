@@ -8,7 +8,11 @@
 // per-cell masses for masked require a 1-cell halo and are handled by
 // set_masses_masked() (KSectionHalo wired by the caller).
 //
-// Glass (lattice_type = -1) is not supported and must use the slab path.
+// Glass (lattice_type = -1) is supported via the glass_tag constructor; the
+// caller wires a ksection::GlassLoader (which performs 3D domain-decomp via
+// KSectionTree::cpu_for_point) and provides a KSectionHalo-extended buffer to
+// set_positions_glass / set_velocities_glass. Glass does not support per-
+// particle masses (matches the slab path).
 //
 // The caller is responsible for applying shift_field() to the slab before
 // each redistribute; this class is index-only and never touches the slab.
@@ -25,6 +29,7 @@
 
 #include "general.hh"
 #include "grid_ksection.hh"
+#include "ksection_glass_loader.hh"
 #include "logger.hh"
 #include "mpi_ksection_halo.hh"
 #include "mpi_ksection_redistribute.hh"
@@ -323,6 +328,78 @@ public:
         }
     }
 
+    //! Glass constructor. Allocates particles for the local glass count and
+    //! sets sequential IDs `IDoffset + i + glass.offset()`. After this you
+    //! must call set_positions_glass / set_velocities_glass with the
+    //! KSectionHalo-extended buffer of the displacement field.
+    //!
+    //! Glass does not support per-particle masses (matches slab path).
+    struct glass_tag {};
+    ksection_lattice_generator(glass_tag,
+                               const GlassLoader<T>& glass,
+                               const SlabRedistributor& redist,
+                               int ngrid,
+                               std::size_t IDoffset,
+                               bool b64reals, bool b64ids)
+    : lattice_type_(-1),
+      shifted_lattice_(false),
+      ngrid_(ngrid),
+      n_recv_(static_cast<std::size_t>(redist.n_recv())),
+      redist_(&redist),
+      b64reals_(b64reals), b64ids_(b64ids),
+      glass_(&glass)
+    {
+        overload_ = 1;
+
+        const std::size_t nlocal = glass.size();
+        particles_.allocate(nlocal, b64reals, b64ids, false);
+        global_num_particles_ = glass.global_num_particles();
+
+        const std::uint64_t off =
+            static_cast<std::uint64_t>(IDoffset) *
+            static_cast<std::uint64_t>(global_num_particles_);
+        const std::uint64_t glass_off = static_cast<std::uint64_t>(glass.offset());
+        for (std::size_t i = 0; i < nlocal; ++i) {
+            const std::uint64_t id = off + glass_off + static_cast<std::uint64_t>(i);
+            if (b64ids) particles_.set_id64(i, id);
+            else        particles_.set_id32(i, static_cast<std::uint32_t>(id));
+        }
+
+        music::ilog << "Created KSec Glass Particles : "
+                    << global_num_particles_ << std::endl;
+    }
+
+    //! Glass positions: pos[idim] = pos_cell[idim] / N * lunit + cic(disp).
+    //! `ext` is the KSectionHalo extended buffer (size (Lx+1)*(Ly+1)*(Lz+1))
+    //! holding the idim-component of the displacement field after a
+    //! redistribute + halo update.
+    void set_positions_glass(int idim, T lunit, const T* ext) {
+        require_glass();
+        const auto& positions = glass_->glass_posr();
+        const T invN = T(1) / T(ngrid_);
+        const std::size_t n = positions.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto& p = positions[i];
+            const T disp = glass_->get_cic_at_ext(p, ext);
+            const T pos_out = T(p[idim]) * invN * lunit + disp;
+            if (b64reals_) particles_.set_pos64(i, idim, pos_out);
+            else           particles_.set_pos32(i, idim, pos_out);
+        }
+    }
+
+    //! Glass velocities: vel[idim] = cic(vel_field).
+    void set_velocities_glass(int idim, const T* ext) {
+        require_glass();
+        const auto& positions = glass_->glass_posr();
+        const std::size_t n = positions.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto& p = positions[i];
+            const T v = glass_->get_cic_at_ext(p, ext);
+            if (b64reals_) particles_.set_vel64(i, idim, v);
+            else           particles_.set_vel32(i, idim, v);
+        }
+    }
+
     //! Masked-SC velocities: vel[idim] = disp[s] (no per-cell offset).
     void set_velocities_masked(int idim, const Grid_KSection<T>& ksec) {
         require_masked();
@@ -368,6 +445,12 @@ private:
                 "ksection_lattice_generator: masked API called on a "
                 "non-masked generator");
     }
+    void require_glass() const {
+        if (lattice_type_ != -1)
+            throw std::logic_error(
+                "ksection_lattice_generator: glass API called on a "
+                "non-glass generator");
+    }
 
     int lattice_type_;
     bool shifted_lattice_;
@@ -384,6 +467,9 @@ private:
     int lattice_index_ = 0;
     std::array<int, 8> mask_ = {0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<std::uint32_t> selected_slots_;
+
+    // Glass-path state (null for Bravais/masked).
+    const GlassLoader<T>* glass_ = nullptr;
 };
 
 } // namespace ksection

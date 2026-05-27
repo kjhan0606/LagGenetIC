@@ -26,6 +26,7 @@
 #include <particle_generator.hh>
 #include <particle_plt.hh>
 #include <ksection_probe.hh>
+#include <ksection_glass_loader.hh>
 #include <ksection_lattice_generator.hh>
 #include <grid_fft_ksection_bridge.hh>
 
@@ -359,8 +360,10 @@ int run( config_file& the_config )
      || (lattice_type == particle::lattice_bcc)
      || (lattice_type == particle::lattice_fcc)
      || (lattice_type == particle::lattice_rsc)
-     || (lattice_type == particle::lattice_masked);
+     || (lattice_type == particle::lattice_masked)
+     || (lattice_type == particle::lattice_glass);
     const bool ksec_masked_lattice = (lattice_type == particle::lattice_masked);
+    const bool ksec_glass_lattice  = (lattice_type == particle::lattice_glass);
     bool any_species_as_particles =
         the_output_plugin->write_species_as(cosmo_species::dm) == output_type::particles;
     if (bDoBaryons)
@@ -370,7 +373,7 @@ int run( config_file& the_config )
         use_ksec_particles_cfg && ksec_supported_lattice && any_species_as_particles;
     if (use_ksec_particles_cfg && !ksec_supported_lattice) {
         music::wlog << "UseKSectionParticles=yes ignored: ParticleLoad must "
-                       "be sc/bcc/fcc/rsc/masked (current lattice="
+                       "be sc/bcc/fcc/rsc/masked/glass (current lattice="
                     << int(lattice_type) << ")" << std::endl;
     } else if (use_ksec_particles_cfg && !any_species_as_particles) {
         music::wlog << "UseKSectionParticles=yes ignored: output plugin writes "
@@ -400,10 +403,12 @@ int run( config_file& the_config )
         }
     }
 
-    std::unique_ptr<ksection::KSectionTree>      ksec_tree_ptr;
-    std::unique_ptr<ksection::SlabRedistributor> ksec_redist_ptr;
-    std::unique_ptr<ksection::KSectionHalo>      ksec_halo_ptr;
-    ksection::Grid_KSection<real_t>              ksec_buf;
+    std::unique_ptr<ksection::KSectionTree>        ksec_tree_ptr;
+    std::unique_ptr<ksection::SlabRedistributor>   ksec_redist_ptr;
+    std::unique_ptr<ksection::KSectionHalo>        ksec_halo_ptr;
+    std::unique_ptr<ksection::GlassLoader<real_t>> ksec_glass_ptr;
+    std::vector<real_t>                            ksec_ext_buf;
+    ksection::Grid_KSection<real_t>                ksec_buf;
     if (use_ksec_particles) {
         int nranks_local = 1;
 #if defined(USE_MPI)
@@ -437,6 +442,15 @@ int run( config_file& the_config )
             , MPI_COMM_WORLD
 #endif
         );
+        if (ksec_glass_lattice) {
+            ksec_glass_ptr = std::make_unique<ksection::GlassLoader<real_t>>(
+                the_config, *ksec_tree_ptr, *ksec_halo_ptr,
+                static_cast<int>(ngrid), static_cast<double>(boxlen)
+#if defined(USE_MPI)
+                , MPI_COMM_WORLD
+#endif
+            );
+        }
         music::ilog << "K-section particle partition active: nranks="
                     << nranks_local << ", N=" << ngrid
                     << ", local cells=" << ksec_redist_ptr->n_recv()
@@ -839,6 +853,17 @@ int run( config_file& the_config )
                                 , MPI_COMM_WORLD
 #endif
                             );
+                    } else if (ksec_glass_lattice) {
+                        // Glass: per-particle IDs by post-domain-decomp order,
+                        // no Bravais sub-shifts. set_positions_glass /
+                        // set_velocities_glass read from KSectionHalo-extended buffer.
+                        ksec_lattice_generator_ptr =
+                            std::make_unique<ksection::ksection_lattice_generator<real_t>>(
+                                ksection::ksection_lattice_generator<real_t>::glass_tag{},
+                                *ksec_glass_ptr,
+                                *ksec_redist_ptr, static_cast<int>(ngrid), IDoffset,
+                                the_output_plugin->has_64bit_reals(),
+                                the_output_plugin->has_64bit_ids());
                     } else {
                         ksec_lattice_generator_ptr =
                             std::make_unique<ksection::ksection_lattice_generator<real_t>>(
@@ -893,6 +918,9 @@ int run( config_file& the_config )
                                 real_t(ksec_lattice_generator_ptr->global_num_particles());
                             ksec_lattice_generator_ptr->set_masses_masked(
                                 pmeanmass, ksec_buf, *ksec_halo_ptr);
+                        } else if (ksec_glass_lattice) {
+                            music::elog << "Cannot have individual particle masses for glasses!" << std::endl;
+                            throw std::runtime_error("cannot have individual particle masses for glasses");
                         } else {
                             const int lt = static_cast<int>(lattice_type);
                             const int n_shifts = 1 << lt;
@@ -1132,6 +1160,14 @@ int run( config_file& the_config )
                                 // Per-cell coords already encoded by selected_slots_.
                                 ksection::redistribute_slab_to_ksec(tmp, *ksec_redist_ptr, ksec_buf);
                                 ksec_lattice_generator_ptr->set_positions_masked(idim, lunit, ksec_buf);
+                            } else if (ksec_glass_lattice) {
+                                // Glass: redistribute, then exchange +xyz halo so
+                                // every glass particle has its 8 CIC corners in the
+                                // extended buffer. set_positions_glass reads CIC at
+                                // each particle's pre-loaded cell-space position.
+                                ksection::redistribute_slab_to_ksec(tmp, *ksec_redist_ptr, ksec_buf);
+                                ksec_halo_ptr->update_halo(ksec_buf.data(), ksec_ext_buf);
+                                ksec_lattice_generator_ptr->set_positions_glass(idim, lunit, ksec_ext_buf.data());
                             } else {
                                 const int lt = static_cast<int>(lattice_type);
                                 const int n_shifts = 1 << lt;
@@ -1228,6 +1264,10 @@ int run( config_file& the_config )
                             if (ksec_masked_lattice) {
                                 ksection::redistribute_slab_to_ksec(tmp, *ksec_redist_ptr, ksec_buf);
                                 ksec_lattice_generator_ptr->set_velocities_masked(idim, ksec_buf);
+                            } else if (ksec_glass_lattice) {
+                                ksection::redistribute_slab_to_ksec(tmp, *ksec_redist_ptr, ksec_buf);
+                                ksec_halo_ptr->update_halo(ksec_buf.data(), ksec_ext_buf);
+                                ksec_lattice_generator_ptr->set_velocities_glass(idim, ksec_ext_buf.data());
                             } else {
                                 const int lt = static_cast<int>(lattice_type);
                                 const int n_shifts = 1 << lt;
