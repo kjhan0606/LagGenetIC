@@ -112,6 +112,47 @@ specifying the desired number of threads per task in the config file, and the nu
 
 It will then run with 16 tasks times the number of threads per task specified in the config file.
 
+## K-Section Particle Decomposition (local extension)
+
+This fork adds a cuRamses-style **recursive k-section domain decomposition**
+for particle generation, gated by `setup/UseKSectionParticles=yes`. When
+enabled, particle pos/vel/mass are emitted from a 3D rank bbox covering
+`(Lx, Ly, Lz)` cells instead of the slab-oriented FFTW3-MPI layout. This
+keeps per-rank particle storage proportional to a cube root of the global
+particle count rather than an x-slab, which matters at large `N` and high
+rank counts.
+
+Supported `ParticleLoad` values under the k-section path:
+
+| ParticleLoad | Description                                    | Notes                                       |
+|--------------|------------------------------------------------|---------------------------------------------|
+| `sc`         | Simple cubic                                   | with/without `DoBaryons=yes`                |
+| `bcc`        | Body-centered cubic                            | with/without `DoBaryons=yes`                |
+| `fcc`        | Face-centered cubic                            | with/without `DoBaryons=yes`                |
+| `rsc`        | Refined SC                                     | with/without `DoBaryons=yes`                |
+| `masked`     | 2x2x2 masked-SC (CDM corner + baryon center)   | requires `DoBaryons=yes` + `ParticleMaskType` |
+| `glass`      | CIC interp from glass HDF5                     | requires `GlassFileName` + `GlassTiles`     |
+
+Grid-only outputs (`grafic2`, `generic` without particles) and
+`field_lagrangian` / `field_eulerian` output modes always use the
+slab path; the k-section path only handles particle output.
+
+Minimal example (glass on k-section):
+
+```ini
+[setup]
+GridRes              = 32
+BoxLength            = 100
+ParticleLoad         = glass
+GlassFileName        = glass.hdf5   # /PartType1/Coordinates + /Header BoxSize
+GlassTiles           = 8
+UseKSectionParticles = yes
+```
+
+Validation: bit-identical output (`max|diff| = 0` for pos/vel) versus the
+slab path at small grids, exercised in CI via `test_glass_consistency`
+(see Test Suite below).
+
 ## Test Suite
 
 monofonIC includes a basic regression testing framework to catch breaking changes and ensure code reliability.

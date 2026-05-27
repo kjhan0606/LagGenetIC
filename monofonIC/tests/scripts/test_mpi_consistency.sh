@@ -44,6 +44,12 @@ echo ""
 # Test with different MPI task counts
 MPI_TASKS=(1 2 4)
 
+# --oversubscribe is Open MPI only; Intel MPI / MPICH reject it.
+MPI_EXTRA_FLAGS=()
+if mpirun --version 2>&1 | grep -qi "open[ -]*mpi"; then
+    MPI_EXTRA_FLAGS=(--oversubscribe)
+fi
+
 for NTASKS in "${MPI_TASKS[@]}"; do
     echo "------------------------------------------"
     echo "Running with $NTASKS MPI task(s)..."
@@ -56,8 +62,10 @@ for NTASKS in "${MPI_TASKS[@]}"; do
         # Single task - run without mpirun
         "$MONOFONIC_EXE" "$CONFIG_FILE" > "${TEMP_DIR}/log_np${NTASKS}.txt" 2>&1
     else
-        # Multiple tasks - use mpirun with --oversubscribe for CI environments with limited cores
-        mpirun --oversubscribe -np "$NTASKS" "$MONOFONIC_EXE" "$CONFIG_FILE" > "${TEMP_DIR}/log_np${NTASKS}.txt" 2>&1
+        # Multiple tasks - use mpirun (with --oversubscribe on Open MPI for
+        # CI environments with limited cores)
+        mpirun "${MPI_EXTRA_FLAGS[@]}" -np "$NTASKS" "$MONOFONIC_EXE" "$CONFIG_FILE" \
+            > "${TEMP_DIR}/log_np${NTASKS}.txt" 2>&1
     fi
 
     # Check that output was created (single file or multi-file format)

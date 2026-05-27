@@ -7,6 +7,7 @@ This directory contains regression tests for monofonIC to catch commits that bre
 The test suite consists of:
 - **5 regression test configurations** covering different LPT orders, particle loads, and output formats
 - **1 MPI consistency test** that verifies identical results across different MPI task counts
+- **1 k-section glass consistency test** that verifies slab vs k-section bit-identity for the local `UseKSectionParticles=yes` glass path at np in {1, 2, 4}
 - **Reference HDF5 files** containing expected outputs
 - **Comparison script** that performs hybrid tolerance checking (exact for integers, 1e-9 relative tolerance for floats)
 - **CMake/CTest integration** for easy test execution
@@ -47,6 +48,29 @@ All tests use:
 - `mpirun` or equivalent MPI launcher must be available
 
 **Note**: This test is automatically skipped if MPI is not available.
+
+### K-Section Glass Consistency Test
+
+| Test Name | Description |
+|-----------|-------------|
+| `test_glass_consistency` | Generates a tiny glass HDF5 at test time and verifies slab path vs k-section path (np=1, 2, 4) bit-identity |
+
+**Purpose**: Regression check for the local `UseKSectionParticles=yes` glass
+code path. Uses `tests/scripts/make_glass.py` to write a 64-particle
+perturbed-SC glass file (`glass64.hdf5`, tiled 8³ → 32768 particles into
+a 32³ grid), runs `tests/configs/test_glass_slab.conf` as ground truth,
+then `tests/configs/test_glass_ksec.conf` at np in {1, 2, 4}, and compares
+via `tests/scripts/compare_glass_sorted.py` (sort by initial position
+because the k-section path re-IDs glass particles by post-domain-decomp
+order rather than base-particle-first order).
+
+**Labels**: `regression`, `ksection`, `glass`.
+
+**MPI launcher detection**: the driver auto-detects Open MPI vs Intel MPI /
+MPICH and only passes `--oversubscribe` to Open MPI (Intel MPI / MPICH
+reject the flag).
+
+**Note**: If `mpirun` is not on PATH, only the np=1 ksec comparison runs.
 
 ### LPT Analytical Tests
 
@@ -98,6 +122,9 @@ ctest -R test_1lpt_sc_generic --verbose
 
 # Run only MPI consistency test
 ctest -R test_mpi_consistency --verbose
+
+# Run only the k-section glass consistency test
+ctest -R test_glass_consistency --verbose
 
 # Run only regression tests (exclude MPI test)
 ctest -L regression -LE mpi --output-on-failure
