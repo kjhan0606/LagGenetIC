@@ -206,6 +206,35 @@ else()
 endif()
 
 #########################################################################################
+# Glass-on-ksec regression test: slab vs ksec at np in {1,2,4}, bit-identical
+# after sorting by position. Catches regressions in the k-section glass path
+# (GlassLoader, get_cic_at_ext, KSectionHalo wiring) without depending on the
+# main 5 regression-test references.
+#########################################################################################
+set(GLASS_TEST_SCRIPT       "${TEST_SCRIPT_DIR}/test_glass_consistency.sh")
+set(GLASS_SLAB_CONF         "${TEST_CONFIG_DIR}/test_glass_slab.conf")
+set(GLASS_KSEC_CONF         "${TEST_CONFIG_DIR}/test_glass_ksec.conf")
+set(GLASS_MAKE_SCRIPT       "${TEST_SCRIPT_DIR}/make_glass.py")
+set(GLASS_COMPARE_SCRIPT    "${TEST_SCRIPT_DIR}/compare_glass_sorted.py")
+
+add_test(
+    NAME test_glass_consistency
+    COMMAND bash ${GLASS_TEST_SCRIPT}
+            $<TARGET_FILE:monofonIC>
+            ${GLASS_SLAB_CONF}
+            ${GLASS_KSEC_CONF}
+            ${GLASS_MAKE_SCRIPT}
+            ${GLASS_COMPARE_SCRIPT}
+            ${Python3_EXECUTABLE}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(test_glass_consistency PROPERTIES
+    TIMEOUT 600
+    LABELS "regression;ksection;glass"
+)
+message(STATUS "Test test_glass_consistency: Registered (slab vs ksec np in {1,2,4})")
+
+#########################################################################################
 # Transfer function regression tests
 #########################################################################################
 
