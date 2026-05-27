@@ -44,21 +44,39 @@ def expand_multifile(path):
 
 
 def load_partset(files, part):
-    pos_chunks, vel_chunks = [], []
+    """Return (pos, vel, mass_or_None). Masses dataset is optional — the
+    Gadget plugin only emits it when particles have individual masses
+    (e.g. masked-SC). For uniform-mass lattices it lives in
+    /Header/MassTable and there is no /PartType*/Masses dataset."""
+    pos_chunks, vel_chunks, mass_chunks = [], [], []
+    has_masses = None
     for f in files:
         with h5py.File(f, "r") as h:
             grp = h[f"PartType{part}"]
             pos_chunks.append(np.asarray(grp["Coordinates"]))
             vel_chunks.append(np.asarray(grp["Velocities"]))
+            this_has = "Masses" in grp
+            if has_masses is None:
+                has_masses = this_has
+            elif has_masses != this_has:
+                raise RuntimeError(
+                    f"PartType{part}: Masses dataset present in some files but "
+                    f"not others — file {f} disagrees"
+                )
+            if this_has:
+                mass_chunks.append(np.asarray(grp["Masses"]))
     pos = np.concatenate(pos_chunks)
     vel = np.concatenate(vel_chunks)
-    return pos, vel
+    mass = np.concatenate(mass_chunks) if has_masses else None
+    return pos, vel, mass
 
 
-def sort_by_pos(pos, vel, ndigits=8):
+def sort_by_pos(pos, vel, mass=None, ndigits=8):
     key = np.round(pos, ndigits)
     order = np.lexsort((key[:, 2], key[:, 1], key[:, 0]))
-    return pos[order], vel[order]
+    if mass is None:
+        return pos[order], vel[order], None
+    return pos[order], vel[order], mass[order]
 
 
 def cmp(name, a, b, rtol, atol):
@@ -95,16 +113,24 @@ def main(argv=None):
     all_ok = True
     for part in (0, 1):
         try:
-            rp, rv = load_partset(ref_files, part)
-            tp, tv = load_partset(test_files, part)
+            rp, rv, rm = load_partset(ref_files, part)
+            tp, tv, tm = load_partset(test_files, part)
         except KeyError:
             continue
-        print(f"PartType{part}: N_ref={rp.shape[0]} N_test={tp.shape[0]}")
-        rp, rv = sort_by_pos(rp, rv)
-        tp, tv = sort_by_pos(tp, tv)
+        print(f"PartType{part}: N_ref={rp.shape[0]} N_test={tp.shape[0]}"
+              f"  Masses={'yes' if rm is not None else 'no'}")
+        rp, rv, rm = sort_by_pos(rp, rv, rm)
+        tp, tv, tm = sort_by_pos(tp, tv, tm)
         ok_p = cmp(f"PartType{part}/Coordinates", rp, tp, args.rtol, args.atol)
         ok_v = cmp(f"PartType{part}/Velocities", rv, tv, args.rtol, args.atol)
         all_ok = all_ok and ok_p and ok_v
+        if (rm is None) != (tm is None):
+            print(f"  PartType{part}/Masses: present in one but not the other"
+                  f" (ref={rm is not None}, test={tm is not None})  FAIL")
+            all_ok = False
+        elif rm is not None:
+            ok_m = cmp(f"PartType{part}/Masses", rm, tm, args.rtol, args.atol)
+            all_ok = all_ok and ok_m
 
     return 0 if all_ok else 1
 

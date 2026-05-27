@@ -7,7 +7,7 @@ This directory contains regression tests for monofonIC to catch commits that bre
 The test suite consists of:
 - **5 regression test configurations** covering different LPT orders, particle loads, and output formats
 - **1 MPI consistency test** that verifies identical results across different MPI task counts
-- **1 k-section glass consistency test** that verifies slab vs k-section bit-identity for the local `UseKSectionParticles=yes` glass path at np in {1, 2, 4}
+- **4 k-section slab-vs-ksec consistency tests** that verify bit-identity for the local `UseKSectionParticles=yes` particle paths at np in {1, 2, 4}: Bravais SC (DM-only), Bravais BCC+baryons, masked-SC+baryons, and glass
 - **Reference HDF5 files** containing expected outputs
 - **Comparison script** that performs hybrid tolerance checking (exact for integers, 1e-9 relative tolerance for floats)
 - **CMake/CTest integration** for easy test execution
@@ -49,25 +49,35 @@ All tests use:
 
 **Note**: This test is automatically skipped if MPI is not available.
 
-### K-Section Glass Consistency Test
+### K-Section Slab-vs-Ksec Consistency Tests
 
 | Test Name | Description |
 |-----------|-------------|
-| `test_glass_consistency` | Generates a tiny glass HDF5 at test time and verifies slab path vs k-section path (np=1, 2, 4) bit-identity |
+| `test_bravais_sc_consistency` | SC (DM-only) slab vs k-section at np=1, 2, 4 |
+| `test_bravais_bcc_baryons_consistency` | BCC + baryons slab vs k-section at np=1, 2, 4 (dual particle types) |
+| `test_masked_consistency` | masked-SC + baryons (mask_type=3) slab vs k-section at np=1, 2, 4 (per-particle `Masses` dataset) |
+| `test_glass_consistency` | Generates a tiny glass HDF5 at test time and verifies slab vs k-section at np=1, 2, 4 |
 
-**Purpose**: Regression check for the local `UseKSectionParticles=yes` glass
-code path. Uses `tests/scripts/make_glass.py` to write a 64-particle
-perturbed-SC glass file (`glass64.hdf5`, tiled 8³ → 32768 particles into
-a 32³ grid), runs `tests/configs/test_glass_slab.conf` as ground truth,
-then `tests/configs/test_glass_ksec.conf` at np in {1, 2, 4}, and compares
-via `tests/scripts/compare_glass_sorted.py` (sort by initial position
-because the k-section path re-IDs glass particles by post-domain-decomp
-order rather than base-particle-first order).
+**Purpose**: Regression check for the local `UseKSectionParticles=yes`
+particle paths. Each test runs the corresponding `tests/configs/test_*_slab.conf`
+as ground truth at np=1, then `tests/configs/test_*_ksec.conf` at np in
+{1, 2, 4}, and compares via `tests/scripts/compare_glass_sorted.py`
+(sort by initial position because the k-section path may re-ID
+particles by post-domain-decomp order rather than base-particle-first
+order). The comparator handles the optional `PartType*/Masses` dataset
+that the masked path emits.
 
-**Labels**: `regression`, `ksection`, `glass`.
+The three non-glass tests use the generic driver
+`tests/scripts/test_ksec_pair_consistency.sh`; the glass test uses
+`tests/scripts/test_glass_consistency.sh`, which additionally invokes
+`tests/scripts/make_glass.py` to write a 64-particle perturbed-SC glass
+file (`glass64.hdf5`, tiled 8³ → 32768 particles into a 32³ grid).
 
-**MPI launcher detection**: the driver auto-detects Open MPI vs Intel MPI /
-MPICH and only passes `--oversubscribe` to Open MPI (Intel MPI / MPICH
+**Labels**: `regression`, `ksection`, plus one of `bravais`, `baryons`,
+`masked`, or `glass`.
+
+**MPI launcher detection**: the drivers auto-detect Open MPI vs Intel MPI /
+MPICH and only pass `--oversubscribe` to Open MPI (Intel MPI / MPICH
 reject the flag).
 
 **Note**: If `mpirun` is not on PATH, only the np=1 ksec comparison runs.
@@ -125,6 +135,9 @@ ctest -R test_mpi_consistency --verbose
 
 # Run only the k-section glass consistency test
 ctest -R test_glass_consistency --verbose
+
+# Run all k-section slab-vs-ksec consistency tests (Bravais + masked + glass)
+ctest -L ksection --output-on-failure
 
 # Run only regression tests (exclude MPI test)
 ctest -L regression -LE mpi --output-on-failure

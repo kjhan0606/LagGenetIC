@@ -235,6 +235,49 @@ set_tests_properties(test_glass_consistency PROPERTIES
 message(STATUS "Test test_glass_consistency: Registered (slab vs ksec np in {1,2,4})")
 
 #########################################################################################
+# Bravais and masked-SC slab-vs-ksec consistency regression tests. Each one
+# runs the slab path once as ground truth, then the ksec path at np in
+# {1, 2, 4}, and asserts bit-identity after sorting particles by position.
+# Sibling of test_glass_consistency; uses the same comparator and a generic
+# driver (no glass HDF5 generation needed).
+#########################################################################################
+set(KSEC_PAIR_SCRIPT      "${TEST_SCRIPT_DIR}/test_ksec_pair_consistency.sh")
+set(KSEC_COMPARE_SCRIPT   "${TEST_SCRIPT_DIR}/compare_glass_sorted.py")
+
+function(add_ksec_pair_test TEST_NAME SLAB_CONF KSEC_CONF EXTRA_LABEL)
+    add_test(
+        NAME ${TEST_NAME}
+        COMMAND bash ${KSEC_PAIR_SCRIPT}
+                $<TARGET_FILE:monofonIC>
+                ${TEST_CONFIG_DIR}/${SLAB_CONF}
+                ${TEST_CONFIG_DIR}/${KSEC_CONF}
+                ${KSEC_COMPARE_SCRIPT}
+                ${Python3_EXECUTABLE}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    set_tests_properties(${TEST_NAME} PROPERTIES
+        TIMEOUT 600
+        LABELS "regression;ksection;${EXTRA_LABEL}"
+    )
+    message(STATUS "Test ${TEST_NAME}: Registered (slab vs ksec np in {1,2,4})")
+endfunction()
+
+add_ksec_pair_test(test_bravais_sc_consistency
+    test_bravais_sc_slab.conf
+    test_bravais_sc_ksec.conf
+    "bravais")
+
+add_ksec_pair_test(test_bravais_bcc_baryons_consistency
+    test_bravais_bcc_baryons_slab.conf
+    test_bravais_bcc_baryons_ksec.conf
+    "bravais;baryons")
+
+add_ksec_pair_test(test_masked_consistency
+    test_masked_slab.conf
+    test_masked_ksec.conf
+    "masked;baryons")
+
+#########################################################################################
 # Transfer function regression tests
 #########################################################################################
 
