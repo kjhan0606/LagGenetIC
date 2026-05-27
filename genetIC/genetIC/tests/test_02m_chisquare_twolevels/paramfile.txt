@@ -1,0 +1,27 @@
+# Test the calculation of chi square with a zoom level
+
+Om  0.279
+Ol  0.721
+#Ob  0.04
+s8  0.817
+zin	99
+
+random_seed_real_space	13842314
+camb	../camb_transfer_kmax40_z0.dat
+
+outname test_2
+outdir	 ./
+outformat tipsy
+
+
+basegrid 64 64
+
+
+centre 25 32 24
+select_cube 16
+
+zoomgrid 2 64
+
+chi2
+
+done

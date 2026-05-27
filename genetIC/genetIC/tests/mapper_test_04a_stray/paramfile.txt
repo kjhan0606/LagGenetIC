@@ -1,0 +1,50 @@
+# Test stray particle system when retrieving particle IDs
+#
+# With strays on, we are allowed to "zoom" beyond the edge of the
+# literal zoom grid, but the particles will be interpolated from the
+# low-res grid.
+#
+# The generated sphere of particles used to have some strange properties,
+# but recent changes to the code mean that we now demand it behaves as though
+# the zoom grid did extend across the full region required. The comparison
+# output is generated using a factor 2 zoomgrid, to guarantee the same
+# behaviour in this test.
+
+
+# output parameters
+outdir	 ./
+outformat tipsy
+outname test_11
+
+strays_on
+
+# cosmology:
+Om  0.279
+Ol  0.721
+s8  0.817
+zin	99
+camb	../camb_transfer_kmax40_z0.dat
+
+# basegrid 50 Mpc/h, 64^3
+basegrid 50.0 64
+
+# fourier seeding
+random_seed_real_space	8896131
+
+
+
+centre 25 25 25
+select_sphere 9.0
+zoomgrid_with_origin_at 23 23 23 4 64 # zoom grid intentionally too small
+# zoomgrid 2 128  # -- if you replace the above with this line, you should get identical results
+
+
+centre 17.969 17.969 25 # on corner of true high-res region in x-y plane, roughly in middle of z plane
+# this region encompasses true high-res, "stray" high-res, and low-res particles
+select_sphere 3.0
+dump_idfile output.txt
+
+
+
+
+done

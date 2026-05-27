@@ -1,0 +1,30 @@
+# Testing reversal of initial conditions
+
+# cosmology:
+Ob	 	 0.0
+Om	         0.3156
+Ol	         0.6844
+s8	         0.831
+ns	         0.9645
+hubble	     0.6727
+zin	         99
+
+camb	../camb_transfer_kmax40_z500.dat
+random_seed_real_space	23051991
+
+
+# output:
+outname reversed_ics
+outdir	 ./
+outformat gadget2
+
+# 100 Mpc/h, 8^3 cells
+basegrid 100.0 8
+
+
+# Reverse initial conditions:
+reverse
+
+done
+
+dump_grid_fourier 0

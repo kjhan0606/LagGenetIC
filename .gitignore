@@ -1,0 +1,26 @@
+# Build artifacts
+**/build/
+**/*.o
+**/*.a
+**/*.so
+**/*.mod
+
+# Python
+**/__pycache__/
+**/*.pyc
+
+# Editor backups
+*~
+.*.swp
+
+# Local run outputs
+**/IC_output.params
+**/grid-*.npy
+
+# Compiled binaries (specific to the two subprojects)
+genetIC/genetIC/genetIC
+genetIC/genetIC/genetIC_mapper
+monofonIC/build/
+
+# User-specific build helpers
+**/make.local.sh

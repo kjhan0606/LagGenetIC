@@ -1,0 +1,37 @@
+# Test variance calculation on one level
+
+Om  0.279
+Ol  0.721
+#Ob  0.04
+s8  0.817
+zin	99
+
+random_seed_real_space	8896131
+camb	../camb_transfer_kmax40_z0.dat
+
+outname test_2
+outdir	 ./
+outformat tipsy
+
+
+basegrid 64 64
+
+centre 8 8 8
+select_cube 20
+dump_IDfile tagged_cells.txt
+
+# intentionally put the filtering scale so large that we get the unfiltered variance
+# this can be tested against the actual variance on the output grid, using something like:
+#
+# x = np.load("grid-0.npy")
+# c = x.ravel()[tagged]
+# np.var(c)
+
+filtering_scale 10000
+calculate variance
+
+done
+
+calculate variance
+
+dump_grid 0

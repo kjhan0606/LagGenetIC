@@ -1,0 +1,32 @@
+# Test grafic (i.e. multi-grid-based) particle mapping
+# This example is actually quite complicated: ask for flagging 1 on virtual coarse, 1 on real coarse, 1 on real zoom
+# 1 on virtual coarse (32) => downscaled to 8 new flags on real coarse (64)
+# 1 on real coarse (64) => upscaled to 1 new flag on virtual coarse (32)
+# 1 on real zoom (256) => downscaled to 1 new flag on virtual zoom (128)
+# Total 3 existing + 10 new flags = 13 ids flagged
+#
+# Post 2018 (propagation of flags for grafic mapper)
+# 1 on real zoom (256) => downscaled to 1 new flag on virtual zoom (128) + 1 new on 64 + 1 new on 32
+# Total 3 existing + 12 new flags = 15 ids flagged
+
+
+Om  0.279
+Ol  0.721
+Ob  0.04
+s8  0.817
+zin	99
+random_seed_real_space	8896131
+camb	../camb_transfer_kmax40_z0.dat
+
+outdir	 ./
+outname mappertest
+outformat 5
+subsample 2
+
+basegrid 50.0 64
+
+centre 25 25 25
+select_sphere 3
+zoomgrid 4 64
+
+done

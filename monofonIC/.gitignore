@@ -1,0 +1,17 @@
+.DS_Store
+.vscode
+build
+include/cmake_config.hh
+src/input_powerspec.txt
+CMakeCache.txt
+CMakeFiles/cmake.check_cache
+src/CMakeFiles
+src/cmake_install.cmake
+src/CMakeCache.txt
+src/Makefile
+external/panphasia/rand_base.mod
+external/panphasia/rand_int.mod
+external/panphasia/rand.mod
+tests/configs/*.txt
+tests/configs/transfer/*.txt
+tests/configs/transfer/*.ini
