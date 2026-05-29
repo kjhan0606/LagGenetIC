@@ -87,31 +87,39 @@ public:
         g.FourierTransformForward(false);
 
         // transform is transposed!
-        for (size_t i = 0; i < nres_; ++i) 
+        // Thread-local GSL state preserves bit-exact NGENIC output: each (i,j)
+        // independently reseeds from SeedTable_ and draws 2*nres uniforms,
+        // so any thread schedule yields the same per-cell sequence.
+        #pragma omp parallel
         {
-            size_t ii  = (i>0)? nres_ - i : 0;
-            size_t ip  = i - g.local_1_start_;
-            size_t iip = ii- g.local_1_start_;
-            bool i_in_range  = (i >= size_t(g.local_1_start_) && i < size_t(g.local_1_start_+g.local_1_size_));
-            bool ii_in_range = (ii >= size_t(g.local_1_start_) && ii < size_t(g.local_1_start_ + g.local_1_size_));
+            gsl_rng *rng_local = gsl_rng_alloc(gsl_rng_ranlxd1);
 
-            if( i_in_range || ii_in_range )
+            for (size_t i = 0; i < nres_; ++i)
             {
-                for (size_t j = 0; j < nres_; ++j) 
-                {                   
+                size_t ii  = (i>0)? nres_ - i : 0;
+                size_t ip  = i - g.local_1_start_;
+                size_t iip = ii- g.local_1_start_;
+                bool i_in_range  = (i >= size_t(g.local_1_start_) && i < size_t(g.local_1_start_+g.local_1_size_));
+                bool ii_in_range = (ii >= size_t(g.local_1_start_) && ii < size_t(g.local_1_start_ + g.local_1_size_));
+
+                if( !(i_in_range || ii_in_range) ) continue;
+
+                #pragma omp for
+                for (size_t j = 0; j < nres_; ++j)
+                {
                     ptrdiff_t jj = (j>0)? nres_ - j : 0;
                     if( g.is_distributed() )
-                        gsl_rng_set( pRandomGenerator_, SeedTable_[j * nres_ + i]);
+                        gsl_rng_set( rng_local, SeedTable_[j * nres_ + i]);
                     else
-                        gsl_rng_set( pRandomGenerator_, SeedTable_[i * nres_ + j]);
-                    
-                    for (size_t k = 0; k < g.size(2); ++k) 
+                        gsl_rng_set( rng_local, SeedTable_[i * nres_ + j]);
+
+                    for (size_t k = 0; k < g.size(2); ++k)
                     {
-                        double phase = gsl_rng_uniform(pRandomGenerator_) * 2 * M_PI;
+                        double phase = gsl_rng_uniform(rng_local) * 2 * M_PI;
                         double ampl = 0;
 
                         do {
-                            ampl = gsl_rng_uniform(pRandomGenerator_);
+                            ampl = gsl_rng_uniform(rng_local);
                         } while (ampl == 0||ampl == 1);
 
                         if (i == nres_ / 2 || j == nres_ / 2 || k == nres_ / 2) continue;
@@ -148,9 +156,10 @@ public:
                             }
                         }
                     }
-                }
-            }
-        }
+                } // omp for j (implicit barrier syncs threads before next i)
+            } // for i
+            gsl_rng_free(rng_local);
+        } // omp parallel
     }
 };
 

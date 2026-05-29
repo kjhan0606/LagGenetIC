@@ -324,24 +324,25 @@ namespace particle
                     }
                     // read out values from phase shifted field and set assoc. particle's value
                     const auto ipcount0 = ishift * num_p_in_load;
-                    for (size_t i = 0, ipcount = ipcount0; i < field.size(0); ++i)
+                    const size_t s1 = field.size(1);
+                    const size_t s2 = field.size(2);
+                    int bmass_neg_local = 0;
+                    #pragma omp parallel for reduction(|:bmass_neg_local)
+                    for (size_t i = 0; i < field.size(0); ++i)
                     {
-                        for (size_t j = 0; j < field.size(1); ++j)
+                        for (size_t j = 0; j < s1; ++j)
                         {
-                            for (size_t k = 0; k < field.size(2); ++k)
+                            for (size_t k = 0; k < s2; ++k)
                             {
-                                // get
+                                const size_t ipcount = ipcount0 + (i * s1 + j) * s2 + k;
                                 const auto pmass = pmeanmass * field.relem(i, j, k);
-
-                                // check for negative mass
-                                bmass_negative |= pmass<0.0;
-
-                                // set
-                                if (b64reals) particles_.set_mass64(ipcount++, pmass);
-                                else particles_.set_mass32(ipcount++, pmass);
+                                if (pmass < 0.0) bmass_neg_local = 1;
+                                if (b64reals) particles_.set_mass64(ipcount, pmass);
+                                else particles_.set_mass32(ipcount, pmass);
                             }
                         }
                     }
+                    bmass_negative |= (bmass_neg_local != 0);
                 }
                 
                 // diagnostics
@@ -445,20 +446,24 @@ namespace particle
                     }
                     // read out values from phase shifted field and set assoc. particle's value
                     const auto ipcount0 = ishift * num_p_in_load;
-                    for (size_t i = 0, ipcount = ipcount0; i < field.size(0); ++i)
+                    const size_t s1 = field.size(1);
+                    const size_t s2 = field.size(2);
+                    #pragma omp parallel for
+                    for (size_t i = 0; i < field.size(0); ++i)
                     {
-                        for (size_t j = 0; j < field.size(1); ++j)
+                        for (size_t j = 0; j < s1; ++j)
                         {
-                            for (size_t k = 0; k < field.size(2); ++k)
+                            for (size_t k = 0; k < s2; ++k)
                             {
+                                const size_t ipcount = ipcount0 + (i * s1 + j) * s2 + k;
                                 auto pos = field.template get_unit_r_shifted<real_t>(i, j, k, lattice_shifts[lattice_type][ishift] + (lattice_index==1 ? second_lattice_shift[lattice_type] : vec3_t<real_t>{real_t(0.), real_t(0.), real_t(0.)}));
                                 if (b64reals)
                                 {
-                                    particles_.set_pos64(ipcount++, idim, pos[idim] * lunit + field.relem(i, j, k));
+                                    particles_.set_pos64(ipcount, idim, pos[idim] * lunit + field.relem(i, j, k));
                                 }
                                 else
                                 {
-                                    particles_.set_pos32(ipcount++, idim, pos[idim] * lunit + field.relem(i, j, k));
+                                    particles_.set_pos32(ipcount, idim, pos[idim] * lunit + field.relem(i, j, k));
                                 }
                             }
                         }
@@ -541,19 +546,23 @@ namespace particle
                     }
                     // read out values from phase shifted field and set assoc. particle's value
                     const auto ipcount0 = ishift * num_p_in_load;
-                    for (size_t i = 0, ipcount = ipcount0; i < field.size(0); ++i)
+                    const size_t s1 = field.size(1);
+                    const size_t s2 = field.size(2);
+                    #pragma omp parallel for
+                    for (size_t i = 0; i < field.size(0); ++i)
                     {
-                        for (size_t j = 0; j < field.size(1); ++j)
+                        for (size_t j = 0; j < s1; ++j)
                         {
-                            for (size_t k = 0; k < field.size(2); ++k)
+                            for (size_t k = 0; k < s2; ++k)
                             {
+                                const size_t ipcount = ipcount0 + (i * s1 + j) * s2 + k;
                                 if (b64reals)
                                 {
-                                    particles_.set_vel64(ipcount++, idim, field.relem(i, j, k));
+                                    particles_.set_vel64(ipcount, idim, field.relem(i, j, k));
                                 }
                                 else
                                 {
-                                    particles_.set_vel32(ipcount++, idim, field.relem(i, j, k));
+                                    particles_.set_vel32(ipcount, idim, field.relem(i, j, k));
                                 }
                             }
                         }

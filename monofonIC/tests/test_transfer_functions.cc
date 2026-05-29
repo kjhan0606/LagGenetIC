@@ -24,9 +24,14 @@
 #include <string>
 #include <vector>
 
+#if defined(USE_MPI)
+#include <mpi.h>
+#endif
+
 #include <general.hh>
 #include <config_file.hh>
 #include <cosmology_parameters.hh>
+#include <logger.hh>
 #include <transfer_function_plugin.hh>
 
 // Define CONFIG namespace globals (normally defined in main.cc)
@@ -309,7 +314,7 @@ void print_usage(const char* prog_name)
     std::cout << "  rtol           : Relative tolerance (default: 1e-6)\n";
 }
 
-int main(int argc, char** argv)
+static int run(int argc, char** argv)
 {
     if (argc < 5) {
         print_usage(argv[0]);
@@ -412,4 +417,32 @@ int main(int argc, char** argv)
     }
 
     return 0;
+}
+
+int main(int argc, char** argv)
+{
+#if defined(USE_MPI)
+    // The executable is linked against MPI and general.hh's get_wtime()
+    // resolves to MPI_Wtime(), so MPI must be initialised before any
+    // plugin code that times itself runs. Mirror main.cc's pattern.
+    int thread_wanted = MPI_THREAD_MULTIPLE;
+    MPI_Init_thread(&argc, &argv, thread_wanted, &CONFIG::MPI_thread_support);
+    CONFIG::MPI_threads_ok = CONFIG::MPI_thread_support >= thread_wanted;
+    MPI_Comm_rank(MPI_COMM_WORLD, &CONFIG::MPI_task_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &CONFIG::MPI_task_size);
+    CONFIG::MPI_ok = true;
+#endif
+
+    // Surface info/warn/error messages so plugin diagnostics show up
+    // (main.cc does this too); without it the music logger swallows
+    // everything and segfaults look silent.
+    music::logger::set_level(music::log_level::info);
+
+    const int rc = run(argc, argv);
+
+#if defined(USE_MPI)
+    MPI_Finalize();
+#endif
+
+    return rc;
 }

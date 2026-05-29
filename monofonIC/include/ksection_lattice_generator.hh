@@ -209,6 +209,7 @@ public:
         const T* d = ksec.data();
         const std::size_t base = static_cast<std::size_t>(ishift) * n_recv_;
         const T sh = base_shift_unit[idim];
+        #pragma omp parallel for
         for (std::size_t s = 0; s < n_recv_; ++s) {
             const int g = (idim == 0) ? gix[s] : (idim == 1) ? giy[s] : giz[s];
             const T pos = (T(g) + sh) * invN * lunit + d[s];
@@ -226,6 +227,7 @@ public:
         check_ishift(ishift);
         const T* d = ksec.data();
         const std::size_t base = static_cast<std::size_t>(ishift) * n_recv_;
+        #pragma omp parallel for
         for (std::size_t s = 0; s < n_recv_; ++s) {
             const std::size_t slot = base + s;
             if (b64reals_) particles_.set_vel64(slot, idim, d[s]);
@@ -243,6 +245,7 @@ public:
         check_ishift(ishift);
         const T* d = ksec.data();
         const std::size_t base = static_cast<std::size_t>(ishift) * n_recv_;
+        #pragma omp parallel for
         for (std::size_t s = 0; s < n_recv_; ++s) {
             const std::size_t slot = base + s;
             const T m = pmeanmass * d[s];
@@ -263,6 +266,7 @@ public:
         const T invN = T(1.0) / T(ngrid_);
         const T* d = ksec.data();
         const std::size_t n_part = selected_slots_.size();
+        #pragma omp parallel for
         for (std::size_t ip = 0; ip < n_part; ++ip) {
             const std::size_t s = selected_slots_[ip];
             const int g = (idim == 0) ? gix[s] : (idim == 1) ? giy[s] : giz[s];
@@ -298,6 +302,7 @@ public:
         const auto& giz = redist_->recv_giz();
         const T* d = ksec.data();
         const std::size_t n_part = selected_slots_.size();
+        #pragma omp parallel for
         for (std::size_t ip = 0; ip < n_part; ++ip) {
             const std::size_t s = selected_slots_[ip];
             const int ei = gix[s] - Xmin;
@@ -378,6 +383,7 @@ public:
         const auto& positions = glass_->glass_posr();
         const T invN = T(1) / T(ngrid_);
         const std::size_t n = positions.size();
+        #pragma omp parallel for
         for (std::size_t i = 0; i < n; ++i) {
             const auto& p = positions[i];
             const T disp = glass_->get_cic_at_ext(p, ext);
@@ -392,6 +398,7 @@ public:
         require_glass();
         const auto& positions = glass_->glass_posr();
         const std::size_t n = positions.size();
+        #pragma omp parallel for
         for (std::size_t i = 0; i < n; ++i) {
             const auto& p = positions[i];
             const T v = glass_->get_cic_at_ext(p, ext);
@@ -405,6 +412,7 @@ public:
         require_masked();
         const T* d = ksec.data();
         const std::size_t n_part = selected_slots_.size();
+        #pragma omp parallel for
         for (std::size_t ip = 0; ip < n_part; ++ip) {
             const std::size_t s = selected_slots_[ip];
             if (b64reals_) particles_.set_vel64(ip, idim, d[s]);

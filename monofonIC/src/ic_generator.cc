@@ -164,6 +164,15 @@ int run( config_file& the_config )
     //! enable also back-scaled decaying relative velocity mode? only first order!
     const bool bDoLinearBCcorr = the_config.get_value_safe<bool>("setup", "DoBaryonVrel", false);
     music::ilog << "Baryon linear relative velocity mode is " << colors::CONFIG_VALUE << (bDoLinearBCcorr?"enabled":"disabled") << colors::RESET << std::endl;
+    //! cache padded real-space Hessians of phi/phi2 across LPT2/LPT3 stages?
+    //! Trades memory (~3.4 GB/Hessian at N=512 single rank, scales as N^3/nranks)
+    //! for IFFT work: same Hessian is reused many times across phi(2)/3a/3b/A(3).
+    const bool bEnableHessianCache = the_config.get_value_safe<bool>("setup", "EnableHessianCache", false);
+    music::ilog << "Hessian caching is " << colors::CONFIG_VALUE << (bEnableHessianCache?"enabled":"disabled") << colors::RESET << std::endl;
+    //! cap on Hessian cache memory in GB (per-rank). 0 = unlimited. LRU eviction.
+    const double hessian_cache_budget_gb = the_config.get_value_safe<double>("setup", "HessianCacheBudgetGB", 0.0);
+    if (bEnableHessianCache && hessian_cache_budget_gb > 0.0)
+        music::ilog << "Hessian cache budget: " << colors::CONFIG_VALUE << hessian_cache_budget_gb << " GB/rank" << colors::RESET << std::endl;
     // compute mass fractions 
     std::map< cosmo_species, double > Omega;
     if( bDoBaryons ){
@@ -451,10 +460,25 @@ int run( config_file& the_config )
 #endif
             );
         }
-        music::ilog << "K-section particle partition active: nranks="
-                    << nranks_local << ", N=" << ngrid
-                    << ", local cells=" << ksec_redist_ptr->n_recv()
-                    << ", lattice=" << int(lattice_type) << std::endl;
+        // load_balance: per-rank cell-count spread (cuRamses terminology).
+        {
+            const long long my_cells = static_cast<long long>(ksec_redist_ptr->n_recv());
+            long long cmn = my_cells, cmx = my_cells, csum = my_cells;
+#if defined(USE_MPI)
+            MPI_Allreduce(MPI_IN_PLACE, &cmn,  1, MPI_LONG_LONG, MPI_MIN, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &cmx,  1, MPI_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &csum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+#endif
+            const double cmean = (nranks_local > 0) ? double(csum) / nranks_local : 0.0;
+            const double cimb  = (cmean > 0.0) ? double(cmx) / cmean : 0.0;
+            music::ilog << "K-section particle partition active: nranks="
+                        << nranks_local << ", N=" << ngrid
+                        << ", lattice=" << int(lattice_type) << std::endl;
+            music::ilog << "  load_balance (cells/rank): min=" << cmn
+                        << " max=" << cmx
+                        << " mean=" << cmean
+                        << " max/mean=" << cimb << std::endl;
+        }
     }
 
     analytical::PlaneWaveState plane_wave_state;
@@ -553,6 +577,10 @@ int run( config_file& the_config )
     //--------------------------------------------------------------------
 #if defined(USE_CONVOLVER_ORSZAG)
     OrszagConvolver<real_t> Conv({ngrid, ngrid, ngrid}, {boxlen, boxlen, boxlen});
+    if (hessian_cache_budget_gb > 0.0) {
+        const size_t budget_bytes = static_cast<size_t>(hessian_cache_budget_gb * double(1ULL << 30));
+        Conv.set_hessian_cache_budget_bytes(budget_bytes);
+    }
 #elif defined(USE_CONVOLVER_NAIVE)
     NaiveConvolver<real_t> Conv({ngrid, ngrid, ngrid}, {boxlen, boxlen, boxlen});
 #endif
@@ -668,6 +696,8 @@ int run( config_file& the_config )
 
         wtime = get_wtime();
         music::ilog << colors::SYM_CHECK << " " << colors::TASK_NAME << "Computing phi(2) term" << colors::RESET << std::setw(56) << std::setfill('.') << std::left << "" << std::endl;
+        Conv.reset_profile();
+        if (bEnableHessianCache) Conv.enable_hessian_cache(phi);
         Conv.convolve_SumOfHessians(phi, {0, 0}, phi, {1, 1}, {2, 2}, op::assign_to(phi2));
         Conv.convolve_Hessians(phi, {1, 1}, phi, {2, 2}, op::add_to(phi2));
         Conv.convolve_Hessians(phi, {0, 1}, phi, {0, 1}, op::subtract_from(phi2));
@@ -687,6 +717,8 @@ int run( config_file& the_config )
 
         phi2.apply_InverseLaplacian();
         music::ilog << std::setw(70) << std::setfill(' ') << std::right << "took : " << std::setw(8) << get_wtime() - wtime << "s" << std::endl;
+        Conv.report_profile("phi(2)");
+        if (bEnableHessianCache && LPTorder > 2) Conv.enable_hessian_cache(phi2);
 
         if (bAddExternalTides)
         {
@@ -707,6 +739,7 @@ int run( config_file& the_config )
         //... 3a term ...
         wtime = get_wtime();
         music::ilog << colors::SYM_CHECK << " " << colors::TASK_NAME << "Computing phi(3a) term" << colors::RESET << std::setw(55) << std::setfill('.') << std::left << "" << std::endl;
+        Conv.reset_profile();
         phi3a.allocate();
         phi3a.FourierTransformForward(false);
         Conv.convolve_Hessians(phi, {0, 0}, phi, {1, 1}, phi, {2, 2}, op::assign_to(phi3a));
@@ -716,10 +749,12 @@ int run( config_file& the_config )
         Conv.convolve_Hessians(phi, {0, 1}, phi, {0, 1}, phi, {2, 2}, op::subtract_from(phi3a));
         phi3a.apply_InverseLaplacian();
         music::ilog << std::setw(70) << std::setfill(' ') << std::right << "took : " << std::setw(8) << get_wtime() - wtime << "s" << std::endl;
+        Conv.report_profile("phi(3a)");
 
         //... 3b term ...
         wtime = get_wtime();
         music::ilog << colors::SYM_CHECK << " " << colors::TASK_NAME << "Computing phi(3b) term" << colors::RESET << std::setw(55) << std::setfill('.') << std::left << "" << std::endl;
+        Conv.reset_profile();
         phi3b.allocate();
         phi3b.zero();
         phi3b.FourierTransformForward(false);
@@ -731,10 +766,12 @@ int run( config_file& the_config )
         Conv.convolve_Hessians(phi, {1, 2}, phi2, {1, 2}, op::multiply_add_to(phi3b, -1.0));
         phi3b.apply_InverseLaplacian();
         music::ilog << std::setw(70) << std::setfill(' ') << std::right << "took : " << std::setw(8) << get_wtime() - wtime << "s" << std::endl;
+        Conv.report_profile("phi(3b)");
 
         //... transversal term 3c...
         wtime = get_wtime();
         music::ilog << colors::SYM_CHECK << " " << colors::TASK_NAME << "Computing A(3) term" << colors::RESET << std::setw(58) << std::setfill('.') << std::left << "" << std::endl;
+        Conv.reset_profile();
         for (int idim = 0; idim < 3; ++idim)
         {
             // cyclic rotations of indices
@@ -748,7 +785,10 @@ int run( config_file& the_config )
             A3[idim]->apply_InverseLaplacian();
         }
         music::ilog << std::setw(70) << std::setfill(' ') << std::right << "took : " << std::setw(8) << get_wtime() - wtime << "s" << std::endl;
+        Conv.report_profile("A(3)");
     }
+    // Free cached padded Hessians (no-op if caching disabled or already empty)
+    Conv.clear_hessian_cache();
 
     ///... scale all potentials with respective growth factors
     phi *= g1;
@@ -877,6 +917,31 @@ int run( config_file& the_config )
                     particle_lattice_generator_ptr =
                     std::make_unique<particle::lattice_generator<Grid_FFT<real_t>>>( lattice_type, secondary_lattice, the_output_plugin->has_64bit_reals(), the_output_plugin->has_64bit_ids(),
                         bDoBaryons, IDoffset, tmp, the_config );
+                }
+
+                // cpu_job_balance: per-rank particle-count spread.
+                if (use_ksec_particles && ksec_lattice_generator_ptr) {
+                    int nranks_dbg = 1;
+#if defined(USE_MPI)
+                    MPI_Comm_size(MPI_COMM_WORLD, &nranks_dbg);
+#endif
+                    const long long my_np = static_cast<long long>(
+                        ksec_lattice_generator_ptr->get_particles().get_local_num_particles());
+                    long long pmn = my_np, pmx = my_np, psum = my_np;
+#if defined(USE_MPI)
+                    MPI_Allreduce(MPI_IN_PLACE, &pmn,  1, MPI_LONG_LONG, MPI_MIN, MPI_COMM_WORLD);
+                    MPI_Allreduce(MPI_IN_PLACE, &pmx,  1, MPI_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
+                    MPI_Allreduce(MPI_IN_PLACE, &psum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+#endif
+                    const double pmean = (nranks_dbg > 0) ? double(psum) / nranks_dbg : 0.0;
+                    const double pimb  = (pmean > 0.0) ? double(pmx) / pmean : 0.0;
+                    music::ilog << "  cpu_job_balance ("
+                                << (this_species == cosmo_species::baryon ? "bar" : "dm")
+                                << " particles/rank): min=" << pmn
+                                << " max=" << pmx
+                                << " mean=" << pmean
+                                << " max/mean=" << pimb
+                                << " total=" << psum << std::endl;
                 }
             }
 

@@ -278,6 +278,31 @@ add_ksec_pair_test(test_masked_consistency
     "masked;baryons")
 
 #########################################################################################
+# Hessian cache consistency regression test (LPT3).
+# Verifies that EnableHessianCache=yes is bit-identical to =no, and that a
+# tight HessianCacheBudgetGB (forcing LRU evictions) drifts no more than the
+# documented 1-ULP FP noise.
+#########################################################################################
+set(HCACHE_TEST_SCRIPT  "${TEST_SCRIPT_DIR}/test_hessian_cache_consistency.sh")
+set(HCACHE_BASE_CONF    "${TEST_CONFIG_DIR}/test_3lpt_hessian_cache.conf")
+set(HCACHE_COMPARE      "${TEST_SCRIPT_DIR}/compare_glass_sorted.py")
+
+add_test(
+    NAME test_hessian_cache_consistency
+    COMMAND bash ${HCACHE_TEST_SCRIPT}
+            $<TARGET_FILE:monofonIC>
+            ${HCACHE_BASE_CONF}
+            ${HCACHE_COMPARE}
+            ${Python3_EXECUTABLE}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(test_hessian_cache_consistency PROPERTIES
+    TIMEOUT 300
+    LABELS "regression;hessian_cache"
+)
+message(STATUS "Test test_hessian_cache_consistency: Registered (cache off/on/budget)")
+
+#########################################################################################
 # Transfer function regression tests
 #########################################################################################
 

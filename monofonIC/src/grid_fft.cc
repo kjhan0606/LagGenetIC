@@ -18,6 +18,9 @@
 #include <general.hh>
 #include <grid_fft.hh>
 #include <thread>
+#include <algorithm>
+#include <cstring>
+#include <utility>
 
 #include "memory_stat.hh"
 
@@ -333,14 +336,12 @@ void Grid_FFT<data_t, bdistributed>::FourierInterpolateCopyTo( grid_fft_t &grid_
     }
 
 #else
-    // if they are not the same size, we use Fourier interpolation to upscale/downscale
+    // K-section hierarchical exchange (port of cuRamses ksection_exchange_dp).
+    // Tree walk down log_k(nproc) levels, k-1 correspondent peer pairs per level,
+    // 2-step (counts -> data) WAITALL. Replaces the per-slab-row Isend/Recv loop.
     double tstart = get_wtime();
-    music::dlog << "[MPI] Started scatter for Fourier interpolation/copy" << std::endl;
+    music::dlog << "[MPI] Started k-section scatter for Fourier interpolation/copy" << std::endl;
 
-    //... determine communication offsets
-    std::vector<ptrdiff_t> offsets_send, offsets_recv, sizes_send, sizes_recv;
-
-    // this should use bisection, not linear search
     auto get_task = [](ptrdiff_t index, const std::vector<ptrdiff_t> &offsets, const int ntasks) -> int
     {
         int itask = 0;
@@ -349,146 +350,314 @@ void Grid_FFT<data_t, bdistributed>::FourierInterpolateCopyTo( grid_fft_t &grid_
         return itask;
     };
 
-    int ntasks(MPI::get_size());
+    const int ntasks = CONFIG::MPI_task_size;
+    const int myrank = CONFIG::MPI_task_rank;
 
-    offsets_send.assign(ntasks+1, 0);
-    sizes_send.assign(ntasks, 0);
-    offsets_recv.assign(ntasks+1, 0);
-    sizes_recv.assign(ntasks, 0);
+    std::vector<ptrdiff_t> offsets_send(ntasks + 1, 0), offsets_recv(ntasks + 1, 0);
+    std::vector<ptrdiff_t> sizes_send  (ntasks,     0), sizes_recv  (ntasks,     0);
 
-    MPI_Allgather(&grid_from.local_1_size_, 1, MPI_LONG_LONG, &sizes_send[0], 1,
-                    MPI_LONG_LONG, MPI_COMM_WORLD);
-    MPI_Allgather(&grid_to.local_1_size_, 1, MPI_LONG_LONG, &sizes_recv[0], 1,
-                    MPI_LONG_LONG, MPI_COMM_WORLD);
-    MPI_Allgather(&grid_from.local_1_start_, 1, MPI_LONG_LONG, &offsets_send[0], 1,
-                    MPI_LONG_LONG, MPI_COMM_WORLD);
-    MPI_Allgather(&grid_to.local_1_start_, 1, MPI_LONG_LONG, &offsets_recv[0], 1,
-                    MPI_LONG_LONG, MPI_COMM_WORLD);
+    MPI_Allgather(&grid_from.local_1_size_,  1, MPI_LONG_LONG, &sizes_send[0],   1, MPI_LONG_LONG, MPI_COMM_WORLD);
+    MPI_Allgather(&grid_to.local_1_size_,    1, MPI_LONG_LONG, &sizes_recv[0],   1, MPI_LONG_LONG, MPI_COMM_WORLD);
+    MPI_Allgather(&grid_from.local_1_start_, 1, MPI_LONG_LONG, &offsets_send[0], 1, MPI_LONG_LONG, MPI_COMM_WORLD);
+    MPI_Allgather(&grid_to.local_1_start_,   1, MPI_LONG_LONG, &offsets_recv[0], 1, MPI_LONG_LONG, MPI_COMM_WORLD);
 
-    for( int i=0; i< CONFIG::MPI_task_size; i++ ){
-        if( offsets_send[i+1] < offsets_send[i] + sizes_send[i] ) offsets_send[i+1] = offsets_send[i] + sizes_send[i];
-        if( offsets_recv[i+1] < offsets_recv[i] + sizes_recv[i] ) offsets_recv[i+1] = offsets_recv[i] + sizes_recv[i];
+    for (int i = 0; i < ntasks; ++i) {
+        if (offsets_send[i+1] < offsets_send[i] + sizes_send[i]) offsets_send[i+1] = offsets_send[i] + sizes_send[i];
+        if (offsets_recv[i+1] < offsets_recv[i] + sizes_recv[i]) offsets_recv[i+1] = offsets_recv[i] + sizes_recv[i];
     }
 
     const MPI_Datatype datatype =
-        (typeid(data_t) == typeid(float)) ? MPI_C_FLOAT_COMPLEX 
-        : (typeid(data_t) == typeid(double)) ? MPI_C_DOUBLE_COMPLEX 
-        : (typeid(data_t) == typeid(long double)) ? MPI_C_LONG_DOUBLE_COMPLEX
-        : MPI_BYTE;
+        (typeid(data_t) == typeid(float))       ? MPI_C_FLOAT_COMPLEX
+      : (typeid(data_t) == typeid(double))      ? MPI_C_DOUBLE_COMPLEX
+      : (typeid(data_t) == typeid(long double)) ? MPI_C_LONG_DOUBLE_COMPLEX
+      : MPI_BYTE;
 
     const size_t slicesz = grid_from.size(1) * grid_from.size(3);
 
-    // determine effective Nyquist modes representable by both fields and their locations in array
     const size_t fny0_left  = std::min(grid_from.n_[1] / 2, grid_to.n_[1] / 2);
     const size_t fny0_right = std::max(grid_from.n_[1] - grid_to.n_[1] / 2, grid_from.n_[1] / 2);
     const size_t fny1_left  = std::min(grid_from.n_[0] / 2, grid_to.n_[0] / 2);
     const size_t fny1_right = std::max(grid_from.n_[0] - grid_to.n_[0] / 2, grid_from.n_[0] / 2);
     const size_t fny2_left  = std::min(grid_from.n_[2] / 2, grid_to.n_[2] / 2);
-    // size_t fny2_right = std::max(grid_from.n_[2] - grid_to.n_[2] / 2, grid_from.n_[2] / 2);
 
-    const size_t fny0_left_recv  = fny0_left;
-    const size_t fny0_right_recv = (fny0_right + grid_to.n_[1]) - grid_from.n_[1];
+    // Receiver-side fny0 bounds are no longer consulted: senders pre-trim items
+    // and each item carries its destination row index (iglobal_recv) directly.
     const size_t fny1_left_recv  = fny1_left;
     const size_t fny1_right_recv = (fny1_right + grid_to.n_[0]) - grid_from.n_[0];
     const size_t fny2_left_recv  = fny2_left;
-    // const size_t fny2_right_recv = (fny2_right + grid_to.n_[2]) - grid_from.n_[2];
 
-    //--- send data from buffer ---------------------------------------------------
-    
-    std::vector<MPI_Request> req;
-    MPI_Request temp_req;
-
-    for (size_t i = 0; i < grid_from.size(0); ++i)
+    // Prime factorization of ntasks (descending primes -> split sequence).
+    std::vector<int> ks_factor;
     {
-        size_t iglobal_send = i + offsets_send[CONFIG::MPI_task_rank];
-        
-        if (iglobal_send < fny0_left) 
-        {
-            size_t iglobal_recv = iglobal_send;
-            int sendto = get_task(iglobal_recv, offsets_recv, CONFIG::MPI_task_size);
-            MPI_Isend(&grid_from.kelem(i * slicesz), (int)slicesz, datatype, sendto,
-                        (int)iglobal_recv, MPI_COMM_WORLD, &temp_req);
-            req.push_back(temp_req);
-            // std::cout << "task " << CONFIG::MPI_task_rank << " : added request No" << req.size()-1 << ": Isend #" << iglobal_send << " to task " << sendto << ", size = " << slicesz << std::endl;
+        int temp = ntasks;
+        std::vector<std::pair<int,int>> pm;
+        for (int p = 2; (long long)p * p <= temp; ++p) {
+            if (temp % p == 0) {
+                int m = 0;
+                while (temp % p == 0) { temp /= p; ++m; }
+                pm.emplace_back(p, m);
+            }
         }
-        if (iglobal_send > fny0_right) 
-        {
-            size_t iglobal_recv = (iglobal_send + grid_to.n_[1]) - grid_from.n_[1]; 
-            int sendto = get_task(iglobal_recv, offsets_recv, CONFIG::MPI_task_size);
-            MPI_Isend(&grid_from.kelem(i * slicesz), (int)slicesz, datatype, sendto,
-                        (int)iglobal_recv, MPI_COMM_WORLD, &temp_req);
-            req.push_back(temp_req);
-            // std::cout << "task  " << CONFIG::MPI_task_rank << " : added request No" << req.size()-1 << ": Isend #" << iglobal_send << " to task " << sendto << ", size = " << slicesz<< std::endl;
+        if (temp > 1) pm.emplace_back(temp, 1);
+        std::sort(pm.begin(), pm.end(),
+                  [](const std::pair<int,int>& a, const std::pair<int,int>& b){ return a.first > b.first; });
+        for (const auto& x : pm) for (int j = 0; j < x.second; ++j) ks_factor.push_back(x.first);
+    }
+    const int nlevels = static_cast<int>(ks_factor.size());
+
+    // cpu_path[r][lvl] = which child (0..k_lvl-1) rank r belongs to at level lvl.
+    std::vector<std::vector<int>> cpu_path(ntasks, std::vector<int>(nlevels, 0));
+    for (int r = 0; r < ntasks; ++r) {
+        int lo = 0, hi = ntasks - 1;
+        for (int lvl = 0; lvl < nlevels; ++lvl) {
+            const int k = ks_factor[lvl];
+            const int lncpu = hi - lo + 1;
+            const int base  = lncpu / k;
+            const int rem   = lncpu % k;
+            int cum = 0;
+            for (int j = 0; j < k; ++j) {
+                const int sz = base + (j < rem ? 1 : 0);
+                const int c_lo = lo + cum;
+                const int c_hi = c_lo + sz - 1;
+                cum += sz;
+                if (r >= c_lo && r <= c_hi) { cpu_path[r][lvl] = j; lo = c_lo; hi = c_hi; break; }
+            }
         }
     }
 
-    //--- receive data ------------------------------------------------------------
-    #pragma omp parallel if(CONFIG::MPI_threads_ok)
+    // For myrank: bounds of all k children of the node my path passes through at each level.
+    std::vector<std::vector<int>> my_child_lo(nlevels), my_child_hi(nlevels);
     {
-        MPI_Status status;
-        ccomplex_t  * recvbuf = new ccomplex_t[ slicesz ]; 
+        int lo = 0, hi = ntasks - 1;
+        for (int lvl = 0; lvl < nlevels; ++lvl) {
+            const int k = ks_factor[lvl];
+            const int lncpu = hi - lo + 1;
+            const int base  = lncpu / k;
+            const int rem   = lncpu % k;
+            my_child_lo[lvl].assign(k, 0);
+            my_child_hi[lvl].assign(k, 0);
+            int cum = 0;
+            int nlo = lo, nhi = hi;
+            for (int j = 0; j < k; ++j) {
+                const int sz = base + (j < rem ? 1 : 0);
+                const int c_lo = lo + cum;
+                const int c_hi = c_lo + sz - 1;
+                cum += sz;
+                my_child_lo[lvl][j] = c_lo;
+                my_child_hi[lvl][j] = c_hi;
+                if (myrank >= c_lo && myrank <= c_hi) { nlo = c_lo; nhi = c_hi; }
+            }
+            lo = nlo; hi = nhi;
+        }
+    }
 
-        #pragma omp for schedule(dynamic) 
-        for( size_t i=0; i<grid_to.size(0); ++i )
-        {   
-            size_t iglobal_recv = i + offsets_recv[CONFIG::MPI_task_rank];
+    // Static + grow-only working/scratch/recv buffers; persistent across calls.
+    // Sized once to peak demand, reused thereafter — eliminates per-call malloc/free.
+    auto ensure_int = [](std::vector<int>& v, size_t n)         { if (v.size() < n) v.resize(n); };
+    auto ensure_cx  = [](std::vector<ccomplex_t>& v, size_t n)  { if (v.size() < n) v.resize(n); };
 
-            if (iglobal_recv < fny0_left_recv || iglobal_recv > fny0_right_recv)
-            {
-                size_t iglobal_send = (iglobal_recv < fny0_left_recv)? iglobal_recv : (iglobal_recv + grid_from.n_[1]) - grid_to.n_[1];
+    static std::vector<int>        w_dest, w_idx;
+    static std::vector<ccomplex_t> w_buf;
+    static std::vector<int>        sort_nd, sort_ni, sort_perm;
+    static std::vector<ccomplex_t> sort_nb;
+    static std::vector<int>        recv_idx;
+    static std::vector<ccomplex_t> recv_buf;
 
-                int recvfrom = get_task(iglobal_send, offsets_send, CONFIG::MPI_task_size);
-                
-                //#pragma omp critical // need critical region here if we do "MPI_THREAD_FUNNELED", 
-                {
-                    // receive data slice and check for MPI errors when in debug mode
-                    status.MPI_ERROR = MPI_SUCCESS;
-                    MPI_Recv(&recvbuf[0], (int)slicesz, datatype, recvfrom, (int)iglobal_recv, MPI_COMM_WORLD, &status);
-                    assert(status.MPI_ERROR == MPI_SUCCESS);
+    // Initial item list: one entry per source row that has a destination (Nyquist-trimmed).
+    int n_items = 0;
+    {
+        size_t to_send = 0;
+        for (size_t i = 0; i < grid_from.size(0); ++i) {
+            const size_t iglobal_send = i + offsets_send[myrank];
+            if (iglobal_send < fny0_left || iglobal_send > fny0_right) ++to_send;
+        }
+        ensure_int(w_dest, to_send);
+        ensure_int(w_idx,  to_send);
+        ensure_cx (w_buf,  to_send * slicesz);
+
+        size_t item = 0;
+        for (size_t i = 0; i < grid_from.size(0); ++i) {
+            const size_t iglobal_send = i + offsets_send[myrank];
+            const bool send_low  = (iglobal_send < fny0_left);
+            const bool send_high = (iglobal_send > fny0_right);
+            if (!send_low && !send_high) continue;
+            const size_t iglobal_recv = send_low ? iglobal_send
+                                                 : (iglobal_send + grid_to.n_[1]) - grid_from.n_[1];
+            const int dest = get_task(static_cast<ptrdiff_t>(iglobal_recv), offsets_recv, ntasks);
+            w_dest[item] = dest;
+            w_idx [item] = static_cast<int>(iglobal_recv);
+            std::memcpy(&w_buf[item * slicesz], &grid_from.kelem(i * slicesz),
+                        slicesz * sizeof(ccomplex_t));
+            ++item;
+        }
+        n_items = static_cast<int>(item);
+    }
+
+    // Walk down the k-section tree level by level.
+    for (int lvl = 0; lvl < nlevels; ++lvl) {
+        const int k        = ks_factor[lvl];
+        const int my_child = cpu_path[myrank][lvl];
+        const int npeers   = k - 1;
+
+        // 1. Counting sort by child path; my_child bucket placed first so received
+        //    items can be appended directly after it (no separate merge step).
+        std::vector<int> child_count(k, 0);
+        for (int i = 0; i < n_items; ++i) child_count[cpu_path[w_dest[i]][lvl]]++;
+
+        std::vector<int> child_offset(k, 0);
+        {
+            int cum = child_count[my_child];
+            child_offset[my_child] = 0;
+            for (int j = 0; j < k; ++j) {
+                if (j == my_child) continue;
+                child_offset[j] = cum;
+                cum += child_count[j];
+            }
+        }
+        const int kept = child_count[my_child];
+
+        // Phase 1: compute permutation (serial — running[] has data deps).
+        ensure_int(sort_perm, std::max(n_items, 1));
+        {
+            std::vector<int> running(k, 0);
+            for (int i = 0; i < n_items; ++i) {
+                const int c = cpu_path[w_dest[i]][lvl];
+                sort_perm[i] = child_offset[c] + running[c]++;
+            }
+        }
+
+        ensure_int(sort_nd, std::max(n_items, 1));
+        ensure_int(sort_ni, std::max(n_items, 1));
+        ensure_cx (sort_nb, static_cast<size_t>(std::max(n_items, 1)) * slicesz);
+
+        // Phase 2: apply permutation in parallel — each src i writes its unique dst slot.
+        #pragma omp parallel for
+        for (int i = 0; i < n_items; ++i) {
+            const int dst = sort_perm[i];
+            sort_nd[dst] = w_dest[i];
+            sort_ni[dst] = w_idx [i];
+            std::memcpy(&sort_nb[static_cast<size_t>(dst) * slicesz],
+                        &w_buf [static_cast<size_t>(i)   * slicesz],
+                        slicesz * sizeof(ccomplex_t));
+        }
+
+        // 2. Correspondent peers: same relative position within each non-self child group.
+        const int my_pos = myrank - my_child_lo[lvl][my_child];
+        std::vector<int> peer_list(std::max(npeers, 1));
+        std::vector<int> peer_child(std::max(npeers, 1));
+        std::vector<int> send_count(std::max(npeers, 1));
+        {
+            int p = 0;
+            for (int j = 0; j < k; ++j) {
+                if (j == my_child) continue;
+                const int csz = my_child_hi[lvl][j] - my_child_lo[lvl][j] + 1;
+                peer_list [p] = my_child_lo[lvl][j] + std::min(my_pos, csz - 1);
+                peer_child[p] = j;
+                send_count[p] = child_count[j];
+                ++p;
+            }
+        }
+
+        // 3. Exchange counts (ISEND/IRECV + WAITALL).
+        std::vector<int> recv_count(std::max(npeers, 1), 0);
+        if (npeers > 0) {
+            std::vector<MPI_Request> req_sc(npeers), req_rc(npeers);
+            for (int p = 0; p < npeers; ++p) {
+                MPI_Isend(&send_count[p], 1, MPI_INT, peer_list[p], 100 + lvl, MPI_COMM_WORLD, &req_sc[p]);
+                MPI_Irecv(&recv_count[p], 1, MPI_INT, peer_list[p], 100 + lvl, MPI_COMM_WORLD, &req_rc[p]);
+            }
+            MPI_Waitall(npeers, req_sc.data(), MPI_STATUSES_IGNORE);
+            MPI_Waitall(npeers, req_rc.data(), MPI_STATUSES_IGNORE);
+        }
+
+        // 4. Exchange data + idx. Send from sort_nb[kept..n_items-1]; recv into recv_*.
+        int total_recv = 0;
+        std::vector<int> recv_offset(std::max(npeers, 1), 0);
+        for (int p = 0; p < npeers; ++p) { recv_offset[p] = total_recv; total_recv += recv_count[p]; }
+
+        ensure_int(recv_idx, static_cast<size_t>(std::max(total_recv, 1)));
+        ensure_cx (recv_buf, static_cast<size_t>(std::max(total_recv, 1)) * slicesz);
+
+        if (npeers > 0) {
+            std::vector<MPI_Request> req_sd(npeers), req_rd(npeers), req_si(npeers), req_ri(npeers);
+            for (int p = 0; p < npeers; ++p) {
+                const int j = peer_child[p];
+                if (send_count[p] > 0) {
+                    MPI_Isend(&sort_nb[static_cast<size_t>(child_offset[j]) * slicesz],
+                              send_count[p] * static_cast<int>(slicesz), datatype,
+                              peer_list[p], 200 + lvl, MPI_COMM_WORLD, &req_sd[p]);
+                    MPI_Isend(&sort_ni[child_offset[j]],
+                              send_count[p], MPI_INT,
+                              peer_list[p], 300 + lvl, MPI_COMM_WORLD, &req_si[p]);
+                } else {
+                    req_sd[p] = MPI_REQUEST_NULL;
+                    req_si[p] = MPI_REQUEST_NULL;
                 }
+                if (recv_count[p] > 0) {
+                    MPI_Irecv(&recv_buf[static_cast<size_t>(recv_offset[p]) * slicesz],
+                              recv_count[p] * static_cast<int>(slicesz), datatype,
+                              peer_list[p], 200 + lvl, MPI_COMM_WORLD, &req_rd[p]);
+                    MPI_Irecv(&recv_idx[recv_offset[p]],
+                              recv_count[p], MPI_INT,
+                              peer_list[p], 300 + lvl, MPI_COMM_WORLD, &req_ri[p]);
+                } else {
+                    req_rd[p] = MPI_REQUEST_NULL;
+                    req_ri[p] = MPI_REQUEST_NULL;
+                }
+            }
+            MPI_Waitall(npeers, req_sd.data(), MPI_STATUSES_IGNORE);
+            MPI_Waitall(npeers, req_si.data(), MPI_STATUSES_IGNORE);
+            MPI_Waitall(npeers, req_rd.data(), MPI_STATUSES_IGNORE);
+            MPI_Waitall(npeers, req_ri.data(), MPI_STATUSES_IGNORE);
+        }
 
-                // copy data slice into new grid, avoiding modes that do not exist in both
-                for( size_t j=0; j<grid_to.size(1); ++j )
-                {
-                    if( j < fny1_left_recv || j > fny1_right_recv )
-                    {
-                        const size_t jsend = (j < fny1_left_recv)? j : (j + grid_from.n_[0]) - grid_to.n_[0];
+        // 5. Append received items after kept bucket in-place (single bulk memcpy).
+        ensure_int(sort_nd, static_cast<size_t>(kept + total_recv));
+        ensure_int(sort_ni, static_cast<size_t>(kept + total_recv));
+        ensure_cx (sort_nb, static_cast<size_t>(kept + total_recv) * slicesz);
 
-                        for( size_t k=0; k<fny2_left_recv; ++k )
-                        {
-                            grid_to.kelem(i,j,k) = recvbuf[jsend * grid_from.sizes_[3] + k];
-                        }
-                    }
+        if (total_recv > 0) {
+            std::memcpy(&sort_nb[static_cast<size_t>(kept) * slicesz],
+                        &recv_buf[0],
+                        static_cast<size_t>(total_recv) * slicesz * sizeof(ccomplex_t));
+            #pragma omp parallel for
+            for (int i = 0; i < total_recv; ++i) {
+                sort_ni[kept + i] = recv_idx[i];
+                sort_nd[kept + i] = (lvl + 1 < nlevels)
+                    ? get_task(static_cast<ptrdiff_t>(recv_idx[i]), offsets_recv, ntasks)
+                    : myrank;
+            }
+        }
+
+        // Swap sort_* into w_* (zero-copy); old w_* becomes next level's scratch.
+        w_dest.swap(sort_nd);
+        w_idx .swap(sort_ni);
+        w_buf .swap(sort_nb);
+        n_items = kept + total_recv;
+    }
+
+    // Final placement: working set now holds every row destined for me.
+    #pragma omp parallel for schedule(dynamic)
+    for (int it = 0; it < n_items; ++it) {
+        const size_t iglobal_recv = static_cast<size_t>(w_idx[it]);
+        const size_t i = iglobal_recv - static_cast<size_t>(offsets_recv[myrank]);
+        const ccomplex_t* recvbuf = &w_buf[static_cast<size_t>(it) * slicesz];
+
+        for (size_t j = 0; j < grid_to.size(1); ++j) {
+            if (j < fny1_left_recv || j > fny1_right_recv) {
+                const size_t jsend = (j < fny1_left_recv) ? j : (j + grid_from.n_[0]) - grid_to.n_[0];
+                for (size_t kk = 0; kk < fny2_left_recv; ++kk) {
+                    grid_to.kelem(i, j, kk) = recvbuf[jsend * grid_from.sizes_[3] + kk];
                 }
             }
         }
-        delete[] recvbuf;
-    }
-    MPI_Barrier( MPI_COMM_WORLD );
-    
-    MPI_Status status;
-    for (size_t i = 0; i < req.size(); ++i)
-    {
-        // need to set status as wait does not necessarily modify it
-        // c.f. http://www.open-mpi.org/community/lists/devel/2007/04/1402.php
-        status.MPI_ERROR = MPI_SUCCESS;
-        // std::cout << "task " << CONFIG::MPI_task_rank << " : checking request No" << i << std::endl;
-        int flag(1);
-        MPI_Test(&req[i], &flag, &status);
-        if( !flag ){
-            std::cout << "task " << CONFIG::MPI_task_rank << " : request No" << i << " unsuccessful" << std::endl;
-        }
-
-        MPI_Wait(&req[i], &status);
-        // std::cout << "---> ok!" << std::endl;
-        assert(status.MPI_ERROR == MPI_SUCCESS);
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    music::dlog.Print("[MPI] Completed scatter for Fourier interpolation/copy, took %fs\n",
-                        get_wtime() - tstart);  
-#endif //defined(USE_MPI)      
+    music::dlog.Print("[MPI] Completed k-section scatter for Fourier interpolation/copy, took %fs\n",
+                      get_wtime() - tstart);
+#endif //defined(USE_MPI)
 }
 
 

@@ -18,6 +18,12 @@
 #pragma once
 
 #include <array>
+#include <list>
+#include <map>
+#include <memory>
+#include <set>
+#include <tuple>
+#include <utility>
 
 #include <general.hh>
 #include <grid_fft.hh>
@@ -61,6 +67,24 @@ public:
     /// @tparam opp output operator
     template <typename kfunc1, typename kfunc2, typename kfunc3, typename opp>
     void convolve3(kfunc1 kf1, kfunc2 kf2, kfunc3 kf3, opp op) {}
+
+    /// @brief Hessian-cache hook. Default: caching not supported (returns nullptr).
+    /// OrszagConvolver overrides this with a real cache lookup/build.
+    Grid_FFT<data_t>* try_get_hessian(Grid_FFT<data_t>& /*field*/, const std::array<int,2>& /*idx*/)
+    { return nullptr; }
+
+    // Stubs so dispatcher templates compile for derived classes without cache support.
+    // The cached branch is gated by `try_get_hessian() != nullptr`, so these are never
+    // reached at runtime for non-Orszag derived classes.
+    template <typename opp>
+    void convolve2_cached(const Grid_FFT<data_t>&, const Grid_FFT<data_t>&, opp) {}
+    template <typename kfunc_rhs, typename opp>
+    void convolve2_left_cached(const Grid_FFT<data_t>&, kfunc_rhs, opp) {}
+    template <typename opp>
+    void convolve3_all_cached(const Grid_FFT<data_t>&, const Grid_FFT<data_t>&, const Grid_FFT<data_t>&, opp) {}
+
+    /// Trim cache down to budget. Default: no-op (derived classes without cache).
+    void evict_to_budget() {}
 
 public:
 
@@ -141,8 +165,17 @@ public:
         // transform to FS in case fields are not
         inl.FourierTransformForward();
         inr.FourierTransformForward();
-        // perform convolution of Hessians
-        static_cast<derived_t &>(*this).convolve2(
+        // try cached path first
+        auto& self = static_cast<derived_t &>(*this);
+        self.evict_to_budget();
+        auto* g1 = self.try_get_hessian(inl, d2l);
+        auto* g2 = self.try_get_hessian(inr, d2r);
+        if (g1 && g2) {
+            self.convolve2_cached(*g1, *g2, output_op);
+            return;
+        }
+        // perform convolution of Hessians (uncached path)
+        self.convolve2(
             // first Hessian
             [&inl,&d2l](size_t i, size_t j, size_t k) -> ccomplex_t {
                 auto grad1 = inl.gradient(d2l[0],{i,j,k});
@@ -178,8 +211,18 @@ public:
         inl.FourierTransformForward();
         inm.FourierTransformForward();
         inr.FourierTransformForward();
-        // perform convolution of Hessians
-        static_cast<derived_t &>(*this).convolve3(
+        // try cached path first
+        auto& self = static_cast<derived_t &>(*this);
+        self.evict_to_budget();
+        auto* g1 = self.try_get_hessian(inl, d2l);
+        auto* g2 = self.try_get_hessian(inm, d2m);
+        auto* g3 = self.try_get_hessian(inr, d2r);
+        if (g1 && g2 && g3) {
+            self.convolve3_all_cached(*g1, *g2, *g3, output_op);
+            return;
+        }
+        // perform convolution of Hessians (uncached path)
+        self.convolve3(
             // first Hessian
             [&inl, &d2l](size_t i, size_t j, size_t k) -> ccomplex_t {
                 auto grad1 = inl.gradient(d2l[0],{i,j,k});
@@ -218,23 +261,29 @@ public:
         // transform to FS in case fields are not
         inl.FourierTransformForward();
         inr.FourierTransformForward();
-        // perform convolution of Hessians
-        static_cast<derived_t &>(*this).convolve2(
-            // first Hessian
+        // RHS sum functor: IFFT(a+b) preserved bit-exact vs uncached path.
+        auto rhs_sum = [&inr, &d2r1, &d2r2](size_t i, size_t j, size_t k) -> ccomplex_t {
+            auto grad11 = inr.gradient(d2r1[0],{i,j,k});
+            auto grad12 = inr.gradient(d2r1[1],{i,j,k});
+            auto grad21 = inr.gradient(d2r2[0],{i,j,k});
+            auto grad22 = inr.gradient(d2r2[1],{i,j,k});
+            return (grad11*grad12+grad21*grad22)*inr.kelem(i, j, k);
+        };
+        // Try LHS-only cached hybrid path (strict bit-exact)
+        auto& self = static_cast<derived_t &>(*this);
+        self.evict_to_budget();
+        if (auto* g1 = self.try_get_hessian(inl, d2l)) {
+            self.convolve2_left_cached(*g1, rhs_sum, output_op);
+            return;
+        }
+        // Fully uncached path
+        self.convolve2(
             [&inl, &d2l](size_t i, size_t j, size_t k) -> ccomplex_t {
                 auto grad1 = inl.gradient(d2l[0],{i,j,k});
                 auto grad2 = inl.gradient(d2l[1],{i,j,k});
                 return grad1*grad2*inl.kelem(i, j, k);
             },
-            // second two Hessian and sum
-            [&inr, &d2r1, &d2r2](size_t i, size_t j, size_t k) -> ccomplex_t {
-                auto grad11 = inr.gradient(d2r1[0],{i,j,k});
-                auto grad12 = inr.gradient(d2r1[1],{i,j,k});
-                auto grad21 = inr.gradient(d2r2[0],{i,j,k});
-                auto grad22 = inr.gradient(d2r2[1],{i,j,k});
-                return (grad11*grad12+grad21*grad22)*inr.kelem(i, j, k);
-            },
-            // -> output operator
+            rhs_sum,
             output_op);
     }
 
@@ -254,22 +303,29 @@ public:
         // transform to FS in case fields are not
         inl.FourierTransformForward();
         inr.FourierTransformForward();
-        // perform convolution of Hessians
-        static_cast<derived_t &>(*this).convolve2(
-            // first Hessian
+        // RHS diff functor: IFFT(a-b) preserved bit-exact vs uncached path.
+        auto rhs_diff = [&inr, &d2r1, &d2r2](size_t i, size_t j, size_t k) -> ccomplex_t {
+            auto grad11 = inr.gradient(d2r1[0],{i,j,k});
+            auto grad12 = inr.gradient(d2r1[1],{i,j,k});
+            auto grad21 = inr.gradient(d2r2[0],{i,j,k});
+            auto grad22 = inr.gradient(d2r2[1],{i,j,k});
+            return (grad11*grad12-grad21*grad22)*inr.kelem(i, j, k);
+        };
+        // Try LHS-only cached hybrid path (strict bit-exact)
+        auto& self = static_cast<derived_t &>(*this);
+        self.evict_to_budget();
+        if (auto* g1 = self.try_get_hessian(inl, d2l)) {
+            self.convolve2_left_cached(*g1, rhs_diff, output_op);
+            return;
+        }
+        // Fully uncached path
+        self.convolve2(
             [&inl, &d2l](size_t i, size_t j, size_t k) -> ccomplex_t {
                 auto grad1 = inl.gradient(d2l[0],{i,j,k});
                 auto grad2 = inl.gradient(d2l[1],{i,j,k});
                 return grad1*grad2*inl.kelem(i, j, k);
             },
-            // second two Hessian and difference
-            [&inr, &d2r1, &d2r2](size_t i, size_t j, size_t k) -> ccomplex_t {
-                auto grad11 = inr.gradient(d2r1[0],{i,j,k});
-                auto grad12 = inr.gradient(d2r1[1],{i,j,k});
-                auto grad21 = inr.gradient(d2r2[0],{i,j,k});
-                auto grad22 = inr.gradient(d2r2[1],{i,j,k});
-                return (grad11*grad12-grad21*grad22)*inr.kelem(i, j, k);
-            },
+            rhs_diff,
             output_op);
     }
     
@@ -442,6 +498,35 @@ private:
     std::vector<ptrdiff_t> offsets_, offsetsp_; //!< offsets for MPI
     std::vector<size_t> sizes_, sizesp_;       //!< sizes for MPI
 
+    // ---- Hessian cache (LRU + memory budget) ----
+    // Key: (field pointer, sorted (i,j) index pair). Value: padded real-space Grid_FFT.
+    // Populated lazily on first Hessian convolve for fields registered via
+    // enable_hessian_cache(); freed via clear_hessian_cache().
+    // LRU: lru_.back() is most recently built/hit; eviction pops front when
+    // cache_used_bytes_ exceeds cache_budget_bytes_ (0 = unlimited).
+    using HessianKey = std::tuple<const void*, int, int>;
+    using CacheEntry = std::pair<HessianKey, std::unique_ptr<Grid_FFT<data_t>>>;
+    using LruList    = std::list<CacheEntry>;
+    std::set<const void*> cacheable_fields_;
+    LruList lru_;
+    std::map<HessianKey, typename LruList::iterator> hessian_index_;
+    size_t cache_budget_bytes_ = 0;   //!< 0 = unlimited
+    size_t cache_used_bytes_   = 0;
+
+    static HessianKey make_key(const void* field, const std::array<int,2>& idx)
+    {
+        int a = idx[0], b = idx[1];
+        if (a > b) std::swap(a, b);
+        return std::make_tuple(field, a, b);
+    }
+
+    static size_t entry_bytes(const Grid_FFT<data_t>& g)
+    {
+        // padded real-space Grid_FFT: ntot_ counts real_t elements (FFTW R2C
+        // layout with the (n2+2) stride). sizeof(real_t) gives bytes.
+        return g.memsize() * sizeof(real_t);
+    }
+
     /// @brief get task index for a given index
     /// @param index index
     /// @param offsets offsets
@@ -505,6 +590,218 @@ public:
 #endif
     }
 
+    // Per-phase profile counters (rank-0 wallclock, accumulated across convolve2 calls).
+    // Reset/report from the LPT driver to attribute time to phi(2), phi(3a), etc.
+    inline static double t_pad    = 0.0;
+    inline static double t_fftbwd = 0.0;
+    inline static double t_mult   = 0.0;
+    inline static double t_fftfwd = 0.0;
+    inline static double t_unpad  = 0.0;
+    inline static double t_cache_build = 0.0;   //!< pad+IFFT time spent populating cache entries
+    inline static double t_cache_copy  = 0.0;   //!< copy/add/sub of cached padded grids
+    inline static long   n_calls  = 0;
+    inline static long   n_cache_hit   = 0;     //!< Hessian lookups that hit the cache
+    inline static long   n_cache_miss  = 0;     //!< Hessian lookups that built a new cache entry
+    inline static long   n_cache_evict = 0;     //!< entries dropped to honour the byte budget
+
+    static void reset_profile()
+    {
+        t_pad = t_fftbwd = t_mult = t_fftfwd = t_unpad = 0.0;
+        t_cache_build = t_cache_copy = 0.0;
+        n_calls = 0;
+        n_cache_hit = n_cache_miss = n_cache_evict = 0;
+    }
+    static void report_profile(const std::string& tag)
+    {
+        const double total = t_pad + t_fftbwd + t_mult + t_fftfwd + t_unpad
+                           + t_cache_build + t_cache_copy;
+        music::ilog << "  [conv " << tag << "] n=" << n_calls
+                    << "  pad=" << t_pad << "s  fft_bwd=" << t_fftbwd
+                    << "s  mult=" << t_mult << "s  fft_fwd=" << t_fftfwd
+                    << "s  unpad=" << t_unpad
+                    << "s  cache_build=" << t_cache_build
+                    << "s  cache_copy=" << t_cache_copy
+                    << "s  sum=" << total << "s"
+                    << "  hits=" << n_cache_hit
+                    << " misses=" << n_cache_miss
+                    << " evicts=" << n_cache_evict
+                    << std::endl;
+    }
+
+    // ---- Hessian cache public API ----
+    /// Register a field as cacheable. Its Hessians will be populated lazily
+    /// on first reference and reused across subsequent convolves until cleared.
+    void enable_hessian_cache(const Grid_FFT<data_t>& field)
+    {
+        cacheable_fields_.insert(static_cast<const void*>(&field));
+    }
+    /// Free all cached Hessian grids and unregister all cacheable fields.
+    void clear_hessian_cache()
+    {
+        lru_.clear();
+        hessian_index_.clear();
+        cacheable_fields_.clear();
+        cache_used_bytes_ = 0;
+    }
+    /// Set the maximum bytes the Hessian cache may hold. 0 = unlimited (default).
+    /// When the limit is exceeded after a miss-build, the least-recently-used
+    /// entries are evicted until the budget is satisfied or only one entry remains.
+    void set_hessian_cache_budget_bytes(size_t b) { cache_budget_bytes_ = b; }
+    /// Number of currently-cached Hessian grids.
+    size_t cached_hessian_count() const { return lru_.size(); }
+    /// Bytes currently held by the Hessian cache.
+    size_t cached_hessian_bytes() const { return cache_used_bytes_; }
+
+    /// Trim cache LRU front entries until cache_used_bytes_ <= cache_budget_bytes_.
+    /// Called by dispatchers at entry (before fresh lookups) so any pointers
+    /// returned from a previous call are already dead. Keeps at least one
+    /// entry so a single Hessian that exceeds the budget is still usable.
+    void evict_to_budget()
+    {
+        if (cache_budget_bytes_ == 0) return;
+        while (cache_used_bytes_ > cache_budget_bytes_ && lru_.size() > 1) {
+            auto& front = lru_.front();
+            cache_used_bytes_ -= entry_bytes(*front.second);
+            hessian_index_.erase(front.first);
+            lru_.pop_front();
+            ++n_cache_evict;
+        }
+    }
+
+    // ---- Cache lookup / build (CRTP override of BaseConvolver::try_get_hessian) ----
+    Grid_FFT<data_t>* try_get_hessian(Grid_FFT<data_t>& field, const std::array<int,2>& idx)
+    {
+        const void* fp = static_cast<const void*>(&field);
+        if (cacheable_fields_.count(fp) == 0) return nullptr;
+        auto key = make_key(fp, idx);
+        auto idx_it = hessian_index_.find(key);
+        if (idx_it != hessian_index_.end()) {
+            // touch: move to back of LRU (most recent).
+            lru_.splice(lru_.end(), lru_, idx_it->second);
+            ++n_cache_hit;
+            return idx_it->second->second.get();
+        }
+        ++n_cache_miss;
+        const double t0 = get_wtime();
+        field.FourierTransformForward();
+        auto g = std::make_unique<Grid_FFT<data_t>>(np_, length_, true, kspace_id);
+        const std::array<int,2> d2 = idx;
+        this->pad_insert(
+            [&field, d2](size_t i, size_t j, size_t k) -> ccomplex_t {
+                auto grad1 = field.gradient(d2[0], {i,j,k});
+                auto grad2 = field.gradient(d2[1], {i,j,k});
+                return grad1 * grad2 * field.kelem(i, j, k);
+            },
+            *g);
+        g->FourierTransformBackward();   // -> padded real-space Hessian
+        t_cache_build += get_wtime() - t0;
+        cache_used_bytes_ += entry_bytes(*g);
+        lru_.emplace_back(key, std::move(g));
+        auto last_it = std::prev(lru_.end());
+        hessian_index_.emplace(std::move(key), last_it);
+        return last_it->second.get();
+    }
+
+    // ---- Cached convolve variants (all read-only on cached operands) ----
+    // copy g2 -> f2p_, f2p_ *= g1, FFT_fwd f2p_, unpad
+    template <typename opp>
+    void convolve2_cached(const Grid_FFT<data_t>& g1, const Grid_FFT<data_t>& g2, opp output_op)
+    {
+        ++n_calls;
+        double t0 = get_wtime();
+        f2p_->copy_from(g2);
+        t_cache_copy += get_wtime() - t0;
+
+        t0 = get_wtime();
+        #pragma omp parallel for
+        for (size_t i = 0; i < f2p_->ntot_; ++i)
+            f2p_->relem(i) *= g1.relem(i);
+        t_mult += get_wtime() - t0;
+
+        t0 = get_wtime();
+        f2p_->FourierTransformForward();
+        t_fftfwd += get_wtime() - t0;
+
+        t0 = get_wtime();
+        unpad(*f2p_, output_op);
+        t_unpad += get_wtime() - t0;
+    }
+
+    // Hybrid: LHS cached (read-only padded real-space grid), RHS is an arbitrary
+    // k-space functor (e.g. sum/diff of Hessians). Used by SumOf/DiffOfHessians
+    // dispatchers to keep IFFT(a+b)/IFFT(a-b) bit-exact while still skipping the
+    // LHS pad+IFFT. Saves 1 IFFT per call.
+    template <typename kfunc_rhs, typename opp>
+    void convolve2_left_cached(const Grid_FFT<data_t>& g1, kfunc_rhs kf2, opp output_op)
+    {
+        ++n_calls;
+        double t0 = get_wtime();
+        f2p_->FourierTransformForward(false);
+        this->pad_insert(kf2, *f2p_);
+        t_pad += get_wtime() - t0;
+
+        t0 = get_wtime();
+        f2p_->FourierTransformBackward();
+        t_fftbwd += get_wtime() - t0;
+
+        t0 = get_wtime();
+        #pragma omp parallel for
+        for (size_t i = 0; i < f2p_->ntot_; ++i)
+            f2p_->relem(i) *= g1.relem(i);
+        t_mult += get_wtime() - t0;
+
+        t0 = get_wtime();
+        f2p_->FourierTransformForward();
+        t_fftfwd += get_wtime() - t0;
+
+        t0 = get_wtime();
+        unpad(*f2p_, output_op);
+        t_unpad += get_wtime() - t0;
+    }
+
+    // Three-Hessian convolution with all three cached.
+    // Step 1: g1 * g2 -> fbuf_ (k-space, N grid).
+    // Step 2: pad_insert(fbuf_) -> f2p_, IFFT, f2p_ *= g3, FFT_fwd, unpad.
+    template <typename opp>
+    void convolve3_all_cached(const Grid_FFT<data_t>& g1,
+                              const Grid_FFT<data_t>& g2,
+                              const Grid_FFT<data_t>& g3,
+                              opp output_op)
+    {
+        // Step 1: cached pair -> fbuf_ (k-space). Mirrors the original convolve3:
+        // unpad's MPI path passes data_t (real_t), so use a generic lambda.
+        fbuf_->FourierTransformForward(false);
+        auto assign_to_fbuf = [this](auto i, auto v) { (*fbuf_)[i] = v; };
+        convolve2_cached(g1, g2, assign_to_fbuf);
+
+        // Step 2: fbuf_ * g3 -> output_op
+        ++n_calls;
+        double t0 = get_wtime();
+        f2p_->FourierTransformForward(false);
+        this->pad_insert(
+            [this](size_t i, size_t j, size_t k) -> ccomplex_t { return fbuf_->kelem(i,j,k); },
+            *f2p_);
+        t_pad += get_wtime() - t0;
+
+        t0 = get_wtime();
+        f2p_->FourierTransformBackward();
+        t_fftbwd += get_wtime() - t0;
+
+        t0 = get_wtime();
+        #pragma omp parallel for
+        for (size_t i = 0; i < f2p_->ntot_; ++i)
+            f2p_->relem(i) *= g3.relem(i);
+        t_mult += get_wtime() - t0;
+
+        t0 = get_wtime();
+        f2p_->FourierTransformForward();
+        t_fftfwd += get_wtime() - t0;
+
+        t0 = get_wtime();
+        unpad(*f2p_, output_op);
+        t_unpad += get_wtime() - t0;
+    }
+
     /// @brief convolve two fields
     /// @tparam kfunc1 abstract function type generating data for the first field
     /// @tparam kfunc2 abstract function type generating data for the second field
@@ -512,26 +809,39 @@ public:
     template <typename kfunc1, typename kfunc2, typename opp>
     void convolve2(kfunc1 kf1, kfunc2 kf2, opp output_op)
     {
-        //... prepare data 1
+        ++n_calls;
+        double t0;
+
+        //... prepare data 1 + 2 (pad_insert does the FourierInterpolateCopyTo lift to high-res)
+        t0 = get_wtime();
         f1p_->FourierTransformForward(false);
         this->pad_insert(kf1, *f1p_);
-
-        //... prepare data 2
         f2p_->FourierTransformForward(false);
         this->pad_insert(kf2, *f2p_);
+        t_pad += get_wtime() - t0;
 
         //... convolve
+        t0 = get_wtime();
         f1p_->FourierTransformBackward();
         f2p_->FourierTransformBackward();
+        t_fftbwd += get_wtime() - t0;
 
+        t0 = get_wtime();
 #pragma omp parallel for
         for (size_t i = 0; i < f1p_->ntot_; ++i)
         {
             (*f2p_).relem(i) *= (*f1p_).relem(i);
         }
+        t_mult += get_wtime() - t0;
+
+        t0 = get_wtime();
         f2p_->FourierTransformForward();
-        //... copy data back
+        t_fftfwd += get_wtime() - t0;
+
+        //... copy data back (unpad does the FourierInterpolateCopyTo drop to low-res)
+        t0 = get_wtime();
         unpad(*f2p_, output_op);
+        t_unpad += get_wtime() - t0;
     }
 
     /// @brief convolve three fields
