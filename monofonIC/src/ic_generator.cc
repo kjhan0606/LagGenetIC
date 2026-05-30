@@ -357,10 +357,11 @@ int run( config_file& the_config )
 
     //------------------------------------------------------------------
     // Optional k-section partition for particle generation & output.
-    // Active iff setup/UseKSectionParticles=yes AND the requested lattice
-    // is a Bravais type (sc/bcc/fcc/rsc). Glass and masked lattices fall
-    // back to the slab path (they need ghost/2x2x2 averaging machinery
-    // that is not implemented on the k-section path).
+    // Active iff setup/UseKSectionParticles=yes AND the requested lattice is
+    // sc/bcc/fcc/rsc (Bravais), masked, or glass. Grid-only (field) output
+    // stays on the slab path by design: the field is already slab-balanced and
+    // the grafic writer is plane-ordered, so 3D k-section routing gives no
+    // benefit and is intentionally not applied.
     //------------------------------------------------------------------
     const bool use_ksec_particles_cfg =
         the_config.get_value_safe<bool>("setup", "UseKSectionParticles", false);
