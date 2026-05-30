@@ -808,16 +808,33 @@ public:
   * \param filename - string giving the path to the file to be imported.
   */
   virtual void importLevel(size_t level, std::string filename) {
+    // Back-compat: 2-arg form keeps the original semantics (file is dm overdensity).
+    importLevelAs(level, filename, particle::species::dm);
+  }
+
+  //! \brief As importLevel, but caller declares which species the imported field is.
+  /*!
+   * If inputSpecies == particle::species::whitenoise, the field is ingested
+   * as-is (no transfer-ratio division). This is the path used by the
+   * monofonIC white-noise hand-off (tools/monofonic_to_genetic_wn.py).
+   * For other species the field is treated as that species' overdensity and
+   * divided by sqrt(P_inputSpecies) to recover the underlying white noise,
+   * preserving the original 2-arg behaviour (which defaults to dm).
+   */
+  virtual void importLevelAs(size_t level, std::string filename, particle::species inputSpecies) {
 
     initialiseRandomComponentIfUninitialised();
-    logging::entry() << "Importing random field on level " << level << " from " << filename << endl;
+    logging::entry() << "Importing random field on level " << level
+                     << " (as " << inputSpecies << ") from " << filename << endl;
     checkLevelExists(level, 0);
 
     auto &levelField = outputFields[0]->getFieldForLevel(level);
     levelField.loadGridData(filename);
     levelField.setFourier(false);
     levelField.toFourier();
-    outputFields[0]->applyTransferRatioOneLevel(particle::species::dm, particle::species::whitenoise, level); // transform back to whitenoise
+    if (inputSpecies != particle::species::whitenoise) {
+      outputFields[0]->applyTransferRatioOneLevel(inputSpecies, particle::species::whitenoise, level);
+    }
     logging::entry() << "... success!" << endl;
   }
 

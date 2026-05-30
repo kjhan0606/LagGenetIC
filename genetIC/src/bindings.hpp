@@ -140,6 +140,12 @@ void setup_parser(tools::ClassDispatch<ICType, void> &dispatch) {
 
     // Load existing random field instead of generating
     dispatch.add_class_route("import_level", static_cast<void (ICType::*)(size_t, std::string)>(&ICType::importLevel));
+    // Species-aware variant: `import_level_as <level> <file> <species>`
+    // where species in {dm, baryon, whitenoise, all}. `whitenoise` skips the
+    // dm->whitenoise transfer-ratio that the back-compat `import_level` applies,
+    // for direct ingestion of bare WN fields (e.g. monofonIC's dump).
+    dispatch.add_class_route("import_level_as",
+                             static_cast<void (ICType::*)(size_t, std::string, particle::species)>(&ICType::importLevelAs));
 
     // Extra commands related to the transfer functions:
     dispatch.add_class_route("baryon_tf_on", &ICType::setUsingBaryons);

@@ -128,6 +128,8 @@ namespace dummyic {
     //! Calls to this function has no effect in a dummy IC generator, since it is only working out the mapper structure
     void importLevel(size_t /*level*/, std::string /*filename*/) override {}
 
+    void importLevelAs(size_t /*level*/, std::string /*filename*/, particle::species /*inputSpecies*/) override {}
+
     //! Calls to this function has no effect in a dummy IC generator, since it is only working out the mapper structure
     void saveTipsyArray(std::string fname, size_t nField) override {}
 

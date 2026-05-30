@@ -24,6 +24,10 @@ namespace particle {
         sp = species::dm;
       } else if (s == "baryon" || s == "gas") {
         sp = species::baryon;
+      } else if (s == "whitenoise" || s == "wn") {
+        sp = species::whitenoise;
+      } else if (s == "all") {
+        sp = species::all;
       } else {
         inputStream.setstate(std::ios::failbit);
       }
