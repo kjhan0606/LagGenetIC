@@ -1,0 +1,51 @@
+# End-to-end zoom hand-off: GenetIC imports the monofonIC parent white noise
+# at level 0, then opens a zoom region. Demonstrates
+# `import_level_as <lvl> <file> whitenoise` consuming a bare monofonIC WN dump.
+#
+# Run from this directory (after building both codes):
+#   1. ../../monofonIC/build/monofonIC parent.conf          # -> wn.h5
+#   2. python3 monofonic_to_genetic_wn.py wn.h5 wn_level0.npy --expect-n 64
+#   3. ../../genetIC/genetIC/genetIC zoom.txt               # -> zoom_import.gadget3
+#
+# Verified 2026-05-30: corr(input WN, imported base density) = 0.80 (phases
+# propagate; <1 because sqrt(P_dm) low-pass filters), vs ~0 for a no-import
+# control. Base density std 0.082 << WN std 0.976 confirms transfer applied.
+
+# Cosmology paired with the bundled camb transfer file below.
+Om  0.279
+Ol  0.721
+s8  0.817
+ns  0.96
+hubble 0.701
+zin 49
+
+camb ../../genetIC/genetIC/tests/camb_transfer_kmax40_z0.dat
+
+# A seed is required even when importing: GenetIC initialises the random
+# component before import_level_as overwrites level 0 with the imported field.
+random_seed_real_space 8896131
+
+outname zoom_import
+outdir  ./
+outformat gadget3
+
+# Base grid must match the monofonIC parent: 64 Mpc/h box, 64 cells.
+base_grid 64.0 64
+
+# Define a zoom region: sphere of radius 8 Mpc/h about the box centre.
+# All grids must be declared BEFORE the random field is drawn/imported.
+centre 32.0 32.0 32.0
+select_sphere 8
+
+# Open a zoom grid, factor 2 smaller, 64 cells (equiv. resolution 128).
+zoom_grid 2 64
+
+# Ingest the monofonIC parent white noise as bare WN at level 0 (no
+# sqrt(P_dm) division). The zoom level keeps GenetIC's own drawn WN.
+import_level_as 0 wn_level0.npy whitenoise
+
+done
+
+# Diagnostics: overdensity grids for base + zoom levels.
+dump_grid 0
+dump_grid 1
