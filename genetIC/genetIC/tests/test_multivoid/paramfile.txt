@@ -1,0 +1,28 @@
+# Multi-void test: two spatially-disjoint flagged clusters -> two sibling zoom boxes
+# sharing the 64^3 base as their common parent. Exercises multi_zoom + grafic output.
+
+Om  0.279
+Ol  0.721
+s8  0.817
+zin	99
+camb	../camb_transfer_kmax40_z0.dat
+
+outdir	 ./
+outname multivoidtest
+outformat grafic
+
+random_seed_real_space	8896131
+
+# 50 Mpc/h, 64^3 base
+basegrid 50.0 64
+
+# Flag two disjoint 4^3 cubes (near corners (12,12,12) and (44,44,44))
+idfile two_clusters.txt
+
+# Open one zoom box per disjoint cluster; zoom factor 4, 64^3 each
+multi_zoom 4 64
+
+done
+dump_grid 0
+dump_grid 1
+dump_grid 2

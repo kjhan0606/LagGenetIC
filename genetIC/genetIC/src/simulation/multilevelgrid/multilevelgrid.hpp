@@ -70,6 +70,18 @@ namespace multilevelgrid {
     size_t nLevels = 0; //!< Number of levels in the multi-level context.
     T simSize; //!< Comoving size of the simulation box
 
+    //! Parent (coarser, spatially-enclosing) level of each level. parentLevels[0]==0 (base is its own parent).
+    /*! For a conventional linear zoom stack this is just {0,0,1,2,...} (each level's parent is the one above).
+        Disjoint sibling zoom boxes (multi-void) share the same parent, so several levels can map to one parent;
+        this is what turns the otherwise-linear stack into a tree. */
+    std::vector<size_t> parentLevels;
+
+    //! Scale-ladder depth ("rung") of each level: rung==0 for the base, rung[parent]+1 otherwise.
+    /*! Two disjoint sibling zoom boxes at the same resolution share a parent and therefore share a rung.
+        Multi-scale filters are keyed by rung rather than by storage index, so siblings get the same filter.
+        For a conventional linear stack rung[i]==i, preserving all existing behaviour. */
+    std::vector<size_t> rungs;
+
 
     MultiLevelGridBase() {}
 
@@ -105,6 +117,19 @@ namespace multilevelgrid {
       addLevel(grid);
     }
 
+    //! As above, but attaches the new grid to an explicit parent level (multi-void sibling support).
+    void
+    addLevel(T size, size_t nside, const Coordinate<T> &offset, size_t parentLevel) {
+
+      if (nLevels == 0)
+        simSize = size;
+
+      auto grid = std::make_shared<grids::Grid<T>>(simSize, nside, size / nside, offset.x, offset.y, offset.z);
+
+      nTransferFunctions = 2;
+      addLevel(grid, parentLevel);
+    }
+
     /*! Define the power spectrum generator to be used when power spectra are required.
      *
      * This must remain alive for the lifetime of the MultiLevelGrid class
@@ -115,12 +140,23 @@ namespace multilevelgrid {
 
     /*! \brief Performs the process of actually adding the level with the appropriate grid and transfer functions
         \param pG - pointer to the grid for this level
+        \param parentLevel - the coarser level that spatially encloses this one. Defaults to the immediately
+               preceding level (the conventional linear zoom stack). Pass an explicit value to attach a
+               disjoint sibling box to a shared parent (multi-void support).
     */
-    void addLevel(std::shared_ptr<grids::Grid<T>> pG) {
+    void addLevel(std::shared_ptr<grids::Grid<T>> pG, size_t parentLevel) {
       if (pGrids.size() == 0) {
         weights.push_back(1.0);
       } else {
         weights.push_back(pow(pG->cellSize / pGrids[0]->cellSize, 3.0));
+      }
+      size_t thisLevel = pGrids.size();
+      if (thisLevel == 0) {
+        parentLevels.push_back(0);
+        rungs.push_back(0);
+      } else {
+        parentLevels.push_back(parentLevel);
+        rungs.push_back(rungs[parentLevel] + 1);
       }
       pGrids.push_back(pG);
       Ns.push_back(pG->size3);
@@ -139,9 +175,48 @@ namespace multilevelgrid {
       this->changed();
     }
 
+    //! Adds a level whose parent is the immediately preceding level (conventional linear zoom stack).
+    void addLevel(std::shared_ptr<grids::Grid<T>> pG) {
+      addLevel(pG, pGrids.size() == 0 ? 0 : pGrids.size() - 1);
+    }
+
+    //! Returns the parent (coarser, spatially-enclosing) level of the specified level. The base level is its own parent.
+    size_t getParentLevel(size_t level) const {
+      return parentLevels[level];
+    }
+
+    //! Returns true if the specified level is the base level (i.e. it is its own parent).
+    bool isBaseLevel(size_t level) const {
+      return parentLevels[level] == level;
+    }
+
+    //! Returns the indices of all levels whose parent is the specified level (its child sibling boxes / finer level).
+    std::vector<size_t> getChildLevels(size_t level) const {
+      std::vector<size_t> children;
+      for (size_t i = 0; i < nLevels; ++i)
+        if (i != level && parentLevels[i] == level)
+          children.push_back(i);
+      return children;
+    }
+
+    //! Returns the scale-ladder depth (rung) of the specified level. Base level is rung 0; siblings share a rung.
+    size_t getRungForLevel(size_t level) const {
+      return rungs[level];
+    }
+
+    //! Returns the number of distinct scale rungs (== max rung + 1). For a linear stack this equals getNumLevels().
+    size_t getNumRungs() const {
+      size_t maxRung = 0;
+      for (size_t r : rungs)
+        if (r > maxRung) maxRung = r;
+      return rungs.empty() ? 0 : maxRung + 1;
+    }
+
     //! Clears the multi-level context of all data
     void clear() {
       pGrids.clear();
+      parentLevels.clear();
+      rungs.clear();
       Ns.clear();
       cumu_Ns.clear();
       Ntot = 0;
@@ -162,8 +237,11 @@ namespace multilevelgrid {
       for(size_t i=0; i<getNumLevels(); ++i) {
         dof+=getGridForLevel(i).size3;
         if(i>0) {
-          // subtract the number of cells this corresponds to on the level above
-          size_t factor = tools::getRatioAndAssertInteger(getGridForLevel(i-1).cellSize,getGridForLevel(i).cellSize);
+          // subtract the number of cells this corresponds to on the (coarser, spatially-enclosing) parent. For a
+          // linear stack the parent is i-1; for a disjoint sibling box it is the shared coarse parent (using i-1
+          // would wrongly measure against an equal-resolution sibling).
+          size_t parent = getParentLevel(i);
+          size_t factor = tools::getRatioAndAssertInteger(getGridForLevel(parent).cellSize,getGridForLevel(i).cellSize);
           factor*=factor*factor;
           dof-=getGridForLevel(i).size3/factor;
         }
@@ -356,48 +434,71 @@ namespace multilevelgrid {
 
       newStack.clear();
 
+      // Maps each original storage level to its index in newStack (which shifts as intermediate grids are inserted).
+      // Used so that disjoint sibling boxes (multi-void) re-attach to their true parent rather than to whatever
+      // grid happens to precede them in storage order.
+      std::vector<size_t> origToNew(nLevels, std::numeric_limits<size_t>::max());
+      constexpr size_t NONE = std::numeric_limits<size_t>::max();
+
       for (size_t level = 0; level < nLevels; ++level) {
         if (level == 0) {
           // First add the base subsampled grids from 'subsample' command
           this->addExtraSubSampledGrids(newStack, number_extra_lowres, resolution_step_factor, level);
 
           logging::entry() << "Adding real grid with resolution " << pGrids[0]->size << std::endl;
+          origToNew[0] = newStack.getNumLevels();
           newStack.addLevel(pGrids[level]);
         } else if (level > 0) {
 
-          // Add the intermediate grids between base and zoom grids
+          // Intermediate grids span from this level's *parent* to this level. For a linear stack the parent is
+          // level-1; for a disjoint sibling box it is the shared coarse parent (so the zoom factor is measured
+          // against the enclosing grid, not against an unrelated sibling).
+          size_t parent = this->getParentLevel(level);
           size_t neff_zoom = size_t(round(pGrids[0]->cellSize / pGrids[level]->cellSize)) * pGrids[0]->size;
-          double zoomfactor = (pGrids[level - 1]->cellSize / pGrids[level]->cellSize);
+          double zoomfactor = (pGrids[parent]->cellSize / pGrids[level]->cellSize);
 
           auto number_intermediate_grids = size_t(
             round(log10(zoomfactor) / log10(double(resolution_step_factor))) - 1);
-          this->addExtraSubSampledGrids(newStack, number_intermediate_grids, resolution_step_factor, level);
+          size_t lastIntermediate = this->addExtraSubSampledGrids(
+            newStack, number_intermediate_grids, resolution_step_factor, level, origToNew[parent]);
 
           logging::entry() << "Adding real grid with resolution " << neff_zoom << std::endl;
-          newStack.addLevel(pGrids[level]);
+          origToNew[level] = newStack.getNumLevels();
+          size_t attachTo = (lastIntermediate == NONE) ? origToNew[parent] : lastIntermediate;
+          newStack.addLevel(pGrids[level], attachTo);
         }
       }
       // Add supersampled grids from the 'supersample' command
       this->addExtraSuperSampledGrids(newStack, number_extra_highres, resolution_step_factor);
     }
 
-    void addExtraSubSampledGrids(MultiLevelGridBase<DataType> &newStack,
-                                 size_t number_extra_grids, size_t resolution_step_factor, size_t level) const {
+    //! Inserts subsampled (virtual) intermediate grids for `level`, chaining them off parentInNewStack (the parent's
+    //! index in newStack). Returns the newStack index of the last grid added, or parentInNewStack if none were added.
+    size_t addExtraSubSampledGrids(MultiLevelGridBase<DataType> &newStack,
+                                   size_t number_extra_grids, size_t resolution_step_factor, size_t level,
+                                   size_t parentInNewStack = std::numeric_limits<size_t>::max()) const {
 
 
       auto factor = size_t(pow(resolution_step_factor, number_extra_grids));
       size_t neff_real_grid = size_t(round(pGrids[0]->cellSize / pGrids[level]->cellSize)) * pGrids[0]->size;
+      size_t lastIndex = parentInNewStack;
 
       if (number_extra_grids > 0) {
         for (size_t i = 0; i < number_extra_grids; ++i) {
           auto vGrid = std::make_shared<grids::SubSampleGrid<T>>(pGrids[level], factor);
 
           logging::entry() << "Adding virtual grid with effective resolution " << neff_real_grid / factor << std::endl;
-          newStack.addLevel(vGrid);
+          size_t newIndex = newStack.getNumLevels();
+          if (lastIndex == std::numeric_limits<size_t>::max())
+            newStack.addLevel(vGrid);
+          else
+            newStack.addLevel(vGrid, lastIndex);
+          lastIndex = newIndex;
 
           factor /= resolution_step_factor;
         }
       }
+      return lastIndex;
     }
 
     void addExtraSuperSampledGrids(MultiLevelGridBase<DataType> &newStack,
@@ -431,16 +532,19 @@ namespace multilevelgrid {
       assert(deepest_coarse < nLevels);
       Coordinate<T> offset;
 
+      // This is a 1:1 copy (no grids inserted/removed), so storage-level indices are preserved and the parent
+      // pointers carry over directly. Passing them through keeps disjoint sibling boxes (multi-void) attached to
+      // their true parent instead of being flattened into a linear chain.
       for (size_t level = 0; level <= deepest_coarse; ++level) {
         auto centeredCoarse = std::make_shared<grids::CenteredGrid<T>>(this->pGrids[level], pointToCenterOnto);
-        newStack.addLevel(centeredCoarse);
+        newStack.addLevel(centeredCoarse, this->getParentLevel(level));
         offset = centeredCoarse->getPointOffset();
       }
 
 
       for (size_t level = deepest_coarse + 1; level < nLevels; ++level) {
         auto offsetFine = std::make_shared<grids::OffsetGrid<T>>(this->pGrids[level], offset.x, offset.y, offset.z);
-        newStack.addLevel(offsetFine);
+        newStack.addLevel(offsetFine, this->getParentLevel(level));
       }
     }
 

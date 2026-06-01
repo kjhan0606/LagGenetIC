@@ -82,6 +82,8 @@ void setup_parser(tools::ClassDispatch<ICType, void> &dispatch) {
     dispatch.add_class_route("base_grid", &ICType::initBaseGrid);
     dispatch.add_class_route("zoom_grid", &ICType::initZoomGrid);
     dispatch.add_class_route("zoom_grid_with_origin_at", &ICType::initZoomGridWithLowLeftCornerAt);
+    // Multi-void: open one disjoint zoom box per connected cluster of flagged cells (grafic output).
+    dispatch.add_class_route("multi_zoom", &ICType::initMultiZoomGrid);
 
 
     // Input Output of flagged particles - OLD NAMES
