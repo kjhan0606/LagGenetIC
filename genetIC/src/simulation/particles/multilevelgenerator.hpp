@@ -103,17 +103,23 @@ namespace particle {
 
       for (size_t level = 1; level < nlevels; ++level) {
 
+        // The coarser, spatially-enclosing parent. For a conventional linear stack this is level-1; for
+        // disjoint sibling zoom boxes (multi-void) several levels share the same (e.g. base) parent.
+        // Parents always have a lower storage index than their children, so processing in increasing
+        // order guarantees the parent is already finalised here.
+        size_t parent = generator.context.getParentLevel(level);
+
         // remove the low-frequency information from this level
         generator.overdensityField.getFieldForLevel(level).applyFilter(
           filters.getHighPassFilterForLevel(level));
         generator.pGenerators[level]->applyFilter(filters.getHighPassFilterForLevel(level));
 
-        // replace with the low-frequency information from the level below
+        // replace with the low-frequency information from the parent level
         generator.overdensityField.getFieldForLevel(level).addFieldFromDifferentGridWithFilter(
-          generator.overdensityField.getFieldForLevel(level - 1),
-          filters.getLowPassFilterForLevel(level - 1));
-        generator.pGenerators[level]->addFieldFromDifferentGridWithFilter(*generator.pGenerators[level - 1],
-                                                                          filters.getLowPassFilterForLevel(level - 1));
+          generator.overdensityField.getFieldForLevel(parent),
+          filters.getLowPassFilterForLevel(parent));
+        generator.pGenerators[level]->addFieldFromDifferentGridWithFilter(*generator.pGenerators[parent],
+                                                                          filters.getLowPassFilterForLevel(parent));
 
 
       }

@@ -103,19 +103,62 @@ namespace filters {
         this->hpFilters.push_back(identityfilter);
 
       } else {
+        // Build the filter ladder over distinct scale *rungs* rather than over storage levels. For a
+        // conventional linear zoom stack each level is its own rung, so this reproduces the original
+        // behaviour exactly. With disjoint sibling zoom boxes (multi-void) several levels share a rung,
+        // and we then assign each level the filter of its rung so that siblings are filtered identically.
+        size_t numRungs = fromContext.getNumRungs();
+
         this->filters.push_back(std::make_shared<Filter<T>>());
         this->lpFilters.push_back(std::make_shared<Filter<T>>());
         this->hpFilters.push_back(std::make_shared<Filter<T>>());
 
-        for (size_t level = 0; level < fromContext.getNumLevels() - 1; ++level) {
-          const grids::Grid<T> &grid0(fromContext.getGridForLevel(level));
+        for (size_t rung = 0; rung + 1 < numRungs; ++rung) {
+          // Any level at this rung shares the same cellSize, hence the same pixel-scale cut.
+          const grids::Grid<T> &gridAtRung(representativeGridForRung(fromContext, rung));
 
-          T k_pixel = ((T) grid0.size) * grid0.getFourierKmin();
+          T k_pixel = ((T) gridAtRung.size) * gridAtRung.getFourierKmin();
           T k_cut = FRACTIONAL_K_SPLIT * k_pixel;
           this->addLevel(k_cut);
         }
+
+        // At this point filters/lpFilters/hpFilters are indexed by rung (size numRungs). If the stack is a
+        // genuine tree (more levels than rungs) remap them so they are indexed by storage level, with each
+        // level taking its rung's filter. For a linear stack (numRungs == numLevels) this is a no-op.
+        if (numRungs != fromContext.getNumLevels())
+          expandRungFiltersToLevels(fromContext);
       }
     }
+
+  protected:
+    //! Returns a grid representative of the given rung (the first stored level whose rung matches).
+    template<typename S>
+    static const grids::Grid<T> &representativeGridForRung(
+        const multilevelgrid::MultiLevelGridBase<T, S> &context, size_t rung) {
+      for (size_t level = 0; level < context.getNumLevels(); ++level)
+        if (context.getRungForLevel(level) == rung)
+          return context.getGridForLevel(level);
+      throw std::runtime_error("FilterFamily: no grid found for requested rung");
+    }
+
+    //! Re-index the rung-keyed filter vectors so they are keyed by storage level (each level -> its rung's filter).
+    template<typename S>
+    void expandRungFiltersToLevels(const multilevelgrid::MultiLevelGridBase<T, S> &context) {
+      auto rungFilters = this->filters;
+      auto rungLp = this->lpFilters;
+      auto rungHp = this->hpFilters;
+      this->filters.clear();
+      this->lpFilters.clear();
+      this->hpFilters.clear();
+      for (size_t level = 0; level < context.getNumLevels(); ++level) {
+        size_t rung = context.getRungForLevel(level);
+        this->filters.push_back(rungFilters[rung]);
+        this->lpFilters.push_back(rungLp[rung]);
+        this->hpFilters.push_back(rungHp[rung]);
+      }
+    }
+
+  public:
 
     //! Adds relevant filters to the next level to be defined, based on what was used on the previous level
     void addLevel(T k_cut) override {

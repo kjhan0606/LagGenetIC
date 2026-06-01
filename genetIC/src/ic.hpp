@@ -14,6 +14,7 @@
 
 #include "tools/numerics/vectormath.hpp"
 #include "tools/numerics/fourier.hpp"
+#include "tools/connected_components.hpp"
 #include "tools/filesystem.h"
 #include "io/numpy.hpp"
 #include "cosmology/parameters.hpp"
@@ -397,6 +398,17 @@ public:
    * \param n Number of cells in the zoom grid
    */
   void initZoomGrid(size_t zoomfac, size_t n) {
+    initZoomGridForParent(zoomfac, n, multiLevelContext.getNumLevels() - 1);
+  }
+
+  /*! \brief As initZoomGrid, but the new grid is attached to an explicit parent level rather than the current
+   *         deepest level. This allows several disjoint sibling zoom boxes to share one coarse parent (multi-void).
+   * \param zoomfac Ratio between the physical sizes of the parent and zoom grid
+   * \param n Number of cells in the zoom grid
+   * \param parentLevel Storage level of the coarse grid that spatially encloses (and provides the flagged cells for)
+   *        the new zoom grid.
+   */
+  void initZoomGridForParent(size_t zoomfac, size_t n, size_t parentLevel) {
     if (haveInitialisedRandomComponent) {
       throw (std::runtime_error("Trying to initialize a grid after the random field was already drawn"));
     }
@@ -405,8 +417,8 @@ public:
     if (multiLevelContext.getNumLevels() < 1)
       throw std::runtime_error("Cannot initialise a zoom grid before initialising the base grid");
 
-    grids::Grid<T> &actualGridAbove = multiLevelContext.getGridForLevel(multiLevelContext.getNumLevels() - 1);
-    grids::Grid<T> &outputGridAbove = multiLevelContext.getOutputGridForLevel(multiLevelContext.getNumLevels() - 1);
+    grids::Grid<T> &actualGridAbove = multiLevelContext.getGridForLevel(parentLevel);
+    grids::Grid<T> &outputGridAbove = multiLevelContext.getOutputGridForLevel(parentLevel);
 
     // Note everything that follows assumes the previous level's output grid (relative to which we must specify the
     // cells to zoom) has the same resolution as the actual grid (relative to which we specify the new grid).
@@ -414,7 +426,7 @@ public:
 
     int nAbove = (int) actualGridAbove.size;
 
-    storeCurrentCellFlagsAsZoomMask(multiLevelContext.getNumLevels());
+    storeCurrentCellFlagsAsZoomMask(multiLevelContext.getNumLevels(), parentLevel);
     vector<size_t> &newLevelZoomParticleArray = zoomParticleArray.back();
 
     if (newLevelZoomParticleArray.size() == 0)
@@ -475,12 +487,70 @@ public:
 
     auto LCIOffset = zoomWindow.getLowerCornerInclusive();
 
-    initZoomGridWithLowLeftCornerAt(LCIOffset.x, LCIOffset.y, LCIOffset.z, zoomfac, n);
+    initZoomGridWithLowLeftCornerAtForParent(LCIOffset.x, LCIOffset.y, LCIOffset.z, zoomfac, n, parentLevel);
 
   }
 
-  //! Gets the currently flagged cells on the specified level and converts them to a zoom mask.
-  void storeCurrentCellFlagsAsZoomMask(size_t level) {
+  /*! \brief Create one zoom grid per spatially-disjoint cluster of currently-flagged cells (multi-void support).
+   *
+   * Unlike initZoomGrid, which builds a single zoom box around the bounding box of ALL flagged cells, this splits
+   * the flagged cells into 26-connected components and opens an independent zoom box for each. All the new boxes are
+   * disjoint siblings attached to the same coarse parent (the current deepest level), so they can sit far apart in
+   * the volume - e.g. multiple inverted-cluster voids in one simulation. Each box gets the same zoom factor and cell
+   * count. The grafic output path writes each box as its own level.
+   *
+   * \param zoomfac Ratio between the physical sizes of the parent and each zoom grid
+   * \param n Number of cells per side in each zoom grid
+   */
+  void initMultiZoomGrid(size_t zoomfac, size_t n) {
+    if (haveInitialisedRandomComponent)
+      throw (std::runtime_error("Trying to initialize a grid after the random field was already drawn"));
+
+    if (multiLevelContext.getNumLevels() < 1)
+      throw std::runtime_error("Cannot initialise a zoom grid before initialising the base grid");
+
+    size_t parentLevel = multiLevelContext.getNumLevels() - 1;
+    grids::Grid<T> &outputGridAbove = multiLevelContext.getOutputGridForLevel(parentLevel);
+
+    // Snapshot the cells the user flagged on the parent, then split them into disjoint connected components.
+    std::vector<size_t> flaggedCells;
+    outputGridAbove.getFlaggedCells(flaggedCells);
+    if (flaggedCells.empty())
+      throw std::runtime_error("Cannot initialise multi-zoom without marking particles to be replaced");
+
+    int nAbove = (int) outputGridAbove.size;
+    std::vector<Coordinate<int>> flaggedCoords;
+    flaggedCoords.reserve(flaggedCells.size());
+    for (auto id : flaggedCells)
+      flaggedCoords.push_back(outputGridAbove.getCoordinateFromIndex(id));
+
+    auto components = tools::labelConnectedComponents(flaggedCoords, nAbove);
+
+    logging::entry() << "multi_zoom: " << flaggedCells.size() << " flagged cells form "
+                     << components.size() << " disjoint region(s); opening one zoom box per region." << std::endl;
+
+    // Open one sibling zoom box per component. We re-flag only that component's cells on the parent before each
+    // call, so the existing single-box window/trim logic operates on one void at a time. All boxes share parentLevel.
+    for (size_t c = 0; c < components.size(); ++c) {
+      outputGridAbove.unflagAllCells();
+      std::vector<size_t> componentCells;
+      componentCells.reserve(components[c].members.size());
+      for (auto &coord : components[c].members)
+        componentCells.push_back(outputGridAbove.getIndexFromCoordinate(coord));
+      outputGridAbove.flagCells(componentCells);
+
+      logging::entry() << "multi_zoom: region " << (c + 1) << " of " << components.size()
+                       << " (" << componentCells.size() << " cells)" << std::endl;
+
+      initZoomGridForParent(zoomfac, n, parentLevel);
+    }
+  }
+
+  //! Gets the currently flagged cells on the parent level and converts them to a zoom mask for the new level.
+  /*! \param level Storage level of the new (finer) grid; the mask is stored at zoomParticleArray[level-1].
+   *  \param parentLevel Storage level whose flagged cells define the mask. For a conventional linear stack this is
+   *         level-1; for a disjoint sibling box it is the shared coarse parent. */
+  void storeCurrentCellFlagsAsZoomMask(size_t level, size_t parentLevel) {
     assert(level > 0);
 
     if (zoomParticleArray.size() < level)
@@ -488,25 +558,39 @@ public:
 
     assert(zoomParticleArray.size() >= level);
 
-    grids::Grid<T> &gridAbove = multiLevelContext.getOutputGridForLevel(level - 1);
+    grids::Grid<T> &gridAbove = multiLevelContext.getOutputGridForLevel(parentLevel);
 
     vector<size_t> &levelZoomParticleArray = zoomParticleArray[level - 1];
     levelZoomParticleArray.clear();
     gridAbove.getFlaggedCells(levelZoomParticleArray);
   }
 
+  //! Overload defaulting the parent to the immediately-preceding level (conventional linear zoom stack).
+  void storeCurrentCellFlagsAsZoomMask(size_t level) {
+    storeCurrentCellFlagsAsZoomMask(level, level - 1);
+  }
+
   /*! \brief Define a zoomed grid with user defined coordinates
    * \param x0, y0, z0  Coordinates of the lower left corner in terms of the calculation grid from the level above
    * \param zoomfac The factor by which the zoom window is smaller than the level above
    * \param n The number of cells per side in the new zoom window
+   *
+   * NB this is bound directly to the "zoom_grid_with_origin_at" command; its signature (and hence argument count)
+   * must stay fixed at 5. The parent-aware multi-void variant lives in initZoomGridWithLowLeftCornerAtForParent.
    */
   void initZoomGridWithLowLeftCornerAt(int x0, int y0, int z0, size_t zoomfac, size_t n) {
-    grids::Grid<T> &calculationGridAbove = multiLevelContext.getGridForLevel(multiLevelContext.getNumLevels() - 1);
-    grids::Grid<T> &outputGridAbove = multiLevelContext.getOutputGridForLevel(multiLevelContext.getNumLevels() - 1);
+    initZoomGridWithLowLeftCornerAtForParent(x0, y0, z0, zoomfac, n, multiLevelContext.getNumLevels() - 1);
+  }
+
+  //! As initZoomGridWithLowLeftCornerAt, but attaches the new grid to an explicit parent level (multi-void support).
+  void initZoomGridWithLowLeftCornerAtForParent(int x0, int y0, int z0, size_t zoomfac, size_t n,
+                                                size_t parentLevel) {
+    grids::Grid<T> &calculationGridAbove = multiLevelContext.getGridForLevel(parentLevel);
+    grids::Grid<T> &outputGridAbove = multiLevelContext.getOutputGridForLevel(parentLevel);
 
     int nAbove = int(calculationGridAbove.size);
 
-    storeCurrentCellFlagsAsZoomMask(multiLevelContext.getNumLevels());
+    storeCurrentCellFlagsAsZoomMask(multiLevelContext.getNumLevels(), parentLevel);
 
     vector<size_t> trimmedParticleArray;
     vector<size_t> &untrimmedParticleArray = zoomParticleArray.back();
@@ -573,7 +657,17 @@ public:
     Coordinate<T> newOffsetLower =
       calculationGridAbove.offsetLower + Coordinate<T>(x0, y0, z0) * calculationGridAbove.cellSize;
 
-    this->addLevelToContext(calculationGridAbove.thisGridSize / zoomfac, n, newOffsetLower);
+    if (parentLevel == multiLevelContext.getNumLevels() - 1) {
+      // Conventional linear stack: attach to the deepest level. Use the virtual path so that input-matching
+      // (DummyICGenerator) stays in sync.
+      this->addLevelToContext(calculationGridAbove.thisGridSize / zoomfac, n, newOffsetLower);
+    } else {
+      // Disjoint sibling box sharing a coarse parent (multi-void). Attach explicitly to that parent.
+      multiLevelContext.addLevel(calculationGridAbove.thisGridSize / zoomfac, n, newOffsetLower, parentLevel);
+      this->gadgetTypesForLevels.push_back(this->mruGadgetType);
+      if (this->gadgetTypesForLevels.size() > 1)
+        usedGadgetParticleTypes[this->mruGadgetType] = true;
+    }
 
 
     grids::Grid<T> &newGrid = multiLevelContext.getGridForLevel(multiLevelContext.getNumLevels() - 1);
@@ -1170,7 +1264,20 @@ public:
 
     if (nLevels >= 2) {
 
+      // A non-linear stack (disjoint sibling zoom boxes, i.e. multi-void) cannot be expressed by the
+      // left-expanding TwoLevelParticleMapper chain, which assumes each finer level nests inside the previous.
+      // Such trees are fully supported by the grafic output path (handled above). For particle (gadget/tipsy)
+      // output we build the chain along the linear spine only and warn that disjoint siblings are omitted.
+      bool contextIsTree = multiLevelContext.getNumRungs() != nLevels;
+      bool omittedSibling = false;
+
       for (size_t level = 1; level < nLevels; level++) {
+
+        if (contextIsTree && multiLevelContext.getParentLevel(level) != level - 1) {
+          // Disjoint sibling box - not representable in the nesting particle-mapper chain.
+          omittedSibling = true;
+          continue;
+        }
 
         auto pOutputGridThisLevel = getOutputGrid(level);
 
@@ -1182,6 +1289,11 @@ public:
         pMapper = std::shared_ptr<particle::mapper::ParticleMapper<GridDataType>>(
           new particle::mapper::TwoLevelParticleMapper<GridDataType>(pMapper, pFine, zoomParticleArray[level - 1]));
       }
+
+      if (omittedSibling)
+        logging::entry(logging::level::warning)
+          << "WARNING: this run contains disjoint sibling zoom boxes (multi-void). Particle (gadget/tipsy) output "
+             "cannot represent these and will omit them; use grafic output for multi-void runs." << std::endl;
     }
 
     if (flaggedParticlesHaveDifferentGadgetType) {

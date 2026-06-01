@@ -90,37 +90,63 @@ namespace multilevelgrid {
 
 
   protected:
-    //! Information in the input mask needs to be matched to a full Grafic hierarchy, potentially with virtual intermediate levels.
+    //! Returns the nearest real (non-virtual) ancestor of the given level by walking parent pointers.
+    size_t nearestRealAncestor(size_t level) {
+      size_t p = this->multilevelgrid->getParentLevel(level);
+      while (!this->multilevelgrid->isBaseLevel(p) &&
+             this->multilevelgrid->getGridForLevel(p).isUpsampledOrDownsampled()) {
+        p = this->multilevelgrid->getParentLevel(p);
+      }
+      return p;
+    }
+
+    //! Returns true if the level is a real grid with no finer children (the finest box of its branch).
+    bool isRealLeaf(size_t level) {
+      bool real = !this->multilevelgrid->getGridForLevel(level).isUpsampledOrDownsampled();
+      return real && this->multilevelgrid->getChildLevels(level).empty();
+    }
+
+    /*! \brief Match each input mask to the real grid whose region it describes.
+     *
+     * Input mask k holds the parent-grid cells that were flagged to open the (k+1)-th real zoom grid.
+     * Enumerating real grids in storage order, the k-th input mask therefore belongs to the nearest
+     * real ancestor of the (k+1)-th real grid. For disjoint sibling boxes (multi-void) several zooms
+     * share the base as parent, so their masks are merged onto the base level rather than assigned to
+     * successive coarse levels (which is what the old linear-hierarchy logic assumed).
+     */
     void identifyLevelsOfInputMask() {
-      size_t input_level = 0;
+      std::vector<size_t> realLevels;
+      for (size_t lvl = 0; lvl < this->multilevelgrid->getNumLevels(); ++lvl) {
+        if (!this->multilevelgrid->getGridForLevel(lvl).isUpsampledOrDownsampled())
+          realLevels.push_back(lvl);
+      }
 
-      for (size_t level = 0; level < this->multilevelgrid->getNumLevels() - 1; level++) {
-        for (size_t i = 0; i < this->multilevelgrid->getGridForLevel(level).size3; i++) {
-
-          // Terminate calculation if all possible input masks have been found
-          if (input_level >= this->inputzoomParticlesAsMask.size()) {
-            return;
-          }
-
-          // As soon as one cell id matches, we have identified the level, so assign it.
-          if (this->isPartofInputMask(i, input_level)) {
-
-            assert(input_level < this->inputzoomParticlesAsMask.size());
-            assert(int(level)>= this->deepestLevelWithMaskedCells);
-
-            this->flaggedIdsAtEachLevel[level] = this->inputzoomParticlesAsMask[input_level];
-            this->deepestLevelWithMaskedCells = int(level);
-            input_level++;
-            break;
-          }
+      for (size_t k = 0; k < this->inputzoomParticlesAsMask.size(); ++k) {
+        if (this->inputzoomParticlesAsMask[k].empty())
+          continue;
+        if (k + 1 >= realLevels.size()) {
+          logging::entry(logging::level::warning)
+            << "Grafic mask: more input masks than zoom grids; ignoring extras" << std::endl;
+          break;
         }
+
+        size_t parentReal = nearestRealAncestor(realLevels[k + 1]);
+        auto &dst = this->flaggedIdsAtEachLevel[parentReal];
+        dst.insert(dst.end(),
+                   this->inputzoomParticlesAsMask[k].begin(),
+                   this->inputzoomParticlesAsMask[k].end());
+        tools::sortAndEraseDuplicate(dst);
+
+        if (int(parentReal) > this->deepestLevelWithMaskedCells)
+          this->deepestLevelWithMaskedCells = int(parentReal);
       }
     }
 
-    //! \brief Calculates the flagged cells on all levels
+    //! \brief Calculates the flagged cells on all levels by propagating each real grid's mask down the tree.
     /*!
-     * For each level, imports the flagged cells of the level if there are any. If not, e.g.
-     * for virtual grids, downgrades the higher resolution mask on the virtual grid.
+     * Real grids carrying an input mask keep it. Virtual intermediate grids inherit their parent's mask
+     * (projected by spatial location, so disjoint sibling branches stay separated). Real leaf grids (the
+     * finest box of a branch) are left empty, which isInMask interprets as "refine everywhere".
      */
     void generateFlagsHierarchy() override {
 
@@ -130,38 +156,23 @@ namespace multilevelgrid {
         return;
       }
 
-      generateHierarchyAboveLevelInclusive(this->deepestLevelWithMaskedCells);
-      generateHierarchyBelowLevelExclusive(this->deepestLevelWithMaskedCells);
-    }
+      // Ascending storage order guarantees a level's parent is processed before the level itself.
+      for (size_t level = 0; level < this->multilevelgrid->getNumLevels(); ++level) {
+        if (this->multilevelgrid->isBaseLevel(level))
+          continue;                                       // base keeps its merged input mask
+        if (!this->flaggedIdsAtEachLevel[level].empty())
+          continue;                                       // real grid with its own input mask
+        if (isRealLeaf(level))
+          continue;                                       // finest box of a branch: refine everywhere
 
-    //! Flags cells for the grafic mask at all levels above (coarser than) the selected deepest level.
-    void generateHierarchyAboveLevelInclusive(int deepestLevel) {
-      for (int level = deepestLevel; level >= 0; level--) {
-
-        if (this->flaggedIdsAtEachLevel[level].size() == 0) {
-          // Generate flags on intermediate levels that will not have some
-          for (size_t i : this->flaggedIdsAtEachLevel[level + 1]) {
-            this->flaggedIdsAtEachLevel[level].push_back(
-              this->multilevelgrid->getIndexOfCellOnOtherLevel(level + 1, level, i));
-          }
-          // The above procedure might not be ordered and will create duplicates, get rid of them.
-          sortAndEraseDuplicate(level);
-        }
-      }
-    }
-
-    //! Flags cells for the grafic mask at all levels below (finer than) the selected level).
-    void generateHierarchyBelowLevelExclusive(size_t coarsestLevel) {
-
-      // Do all level between this level and the finest
-      for (size_t level = coarsestLevel + 1; level < this->multilevelgrid->getNumLevels() - 1; level++) {
-
-        for (size_t i = 0; i < this->multilevelgrid->getGridForLevel(level).size3; i++) {
-          size_t aboveindex = this->multilevelgrid->getIndexOfCellOnOtherLevel(level, level - 1, i);
-          if (this->isMasked(aboveindex, level - 1)) {
+        size_t parent = this->multilevelgrid->getParentLevel(level);
+        const auto &grid = this->multilevelgrid->getGridForLevel(level);
+        for (size_t i = 0; i < grid.size3; ++i) {
+          size_t parentIndex = this->multilevelgrid->getIndexOfCellOnOtherLevel(level, parent, i);
+          if (this->isMasked(parentIndex, parent))
             this->flaggedIdsAtEachLevel[level].push_back(i);
-          }
         }
+        sortAndEraseDuplicate(level);
       }
     }
 
@@ -177,15 +188,6 @@ namespace multilevelgrid {
     bool isMasked(size_t id, size_t level) {
       return std::binary_search(this->flaggedIdsAtEachLevel[level].begin(),
                                 this->flaggedIdsAtEachLevel[level].end(), id);
-    }
-
-    /*! \brief Checks whether the cell at the specified level is in the mask
-        \param id - cell id to check
-        \param level - level the id corresponds to
-    */
-    bool isPartofInputMask(size_t id, size_t level) {
-      return std::binary_search(this->inputzoomParticlesAsMask[level].begin(),
-                                this->inputzoomParticlesAsMask[level].end(), id);
     }
 
   public:

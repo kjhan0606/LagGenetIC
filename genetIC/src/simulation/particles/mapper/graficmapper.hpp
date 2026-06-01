@@ -162,11 +162,24 @@ namespace particle {
       // namely here, grid.downscale and upscale methods, and grafic masks. There should be a unified framework for this.
       void propagateFlagsThroughHierarchy() {
 
-        auto levelsOfRealGrids = this->multiLevelGrid.getFullResolutionGrids();
+        // Propagate each real grid's flags up to its nearest real ancestor (following the parent pointers, which
+        // skip any virtual intermediate grids). Processing in decreasing storage order guarantees a grid has already
+        // received its children's flags before we read it. Unlike the old previous-real-grid stepping, this is correct
+        // for disjoint sibling boxes (multi-void), where the grid stored just before a void is an unrelated sibling
+        // rather than its coarse parent.
+        auto isReal = [this](size_t lvl) {
+          return !this->multiLevelGrid.getGridForLevel(lvl).isUpsampledOrDownsampled();
+        };
 
-        for (unsigned long i = levelsOfRealGrids.size() - 1; i > 0; i--) {
-          size_t this_level = levelsOfRealGrids[i];
-          size_t coarser_level = levelsOfRealGrids[i - 1];
+        size_t n = this->multiLevelGrid.getNumLevels();
+        for (size_t this_level = n; this_level-- > 0;) {
+          if (!isReal(this_level) || this->multiLevelGrid.isBaseLevel(this_level))
+            continue;
+
+          size_t coarser_level = this->multiLevelGrid.getParentLevel(this_level);
+          while (!isReal(coarser_level) && !this->multiLevelGrid.isBaseLevel(coarser_level))
+            coarser_level = this->multiLevelGrid.getParentLevel(coarser_level);
+
           std::vector<size_t> flags_at_this_level;
           std::vector<size_t> flags_at_coarser_level;
           this->multiLevelGrid.getGridForLevel(this_level).getFlaggedCells(flags_at_this_level);
