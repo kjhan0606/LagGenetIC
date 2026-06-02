@@ -1,6 +1,7 @@
 #include <sys/stat.h>
 #include <src/simulation/particles/multilevelgenerator.hpp>
 #include <src/simulation/multilevelgrid/mask.hpp>
+#include <src/simulation/multilevelgrid/grafic_union.hpp>
 #include "src/tools/memmap.hpp"
 #include <memory>
 #include <vector>
@@ -86,10 +87,23 @@ namespace io {
         this->generators = particleGenerators;
         this->outputFields = outFields;
 
-        levelContext.copyContextWithCenteredIntermediate(context, center, 2, subsample, supersample);
+        multilevelgrid::MultiLevelGrid<DataType> treeContext;
+        levelContext.copyContextWithCenteredIntermediate(treeContext, center, 2, subsample, supersample);
 
-        mask = new multilevelgrid::GraficMask<DataType, T>(&context, input_mask);
-        mask->calculateMask();
+        if (treeContext.getNumRungs() == treeContext.getNumLevels()) {
+          // Conventional (nested) linear stack: use the centered context directly.
+          adoptLevels(treeContext, context);
+          mask = new multilevelgrid::GraficMask<DataType, T>(&context, input_mask);
+          mask->calculateMask();
+        } else {
+          // Multi-void sibling tree: collapse to one union grid per rung so grafic writes one grid per
+          // refinement level (siblings no longer overwrite each other), then drive the refmap from the
+          // merged per-level void footprint.
+          std::vector<std::vector<size_t>> perLevelFlags;
+          multilevelgrid::buildGraficUnionContext<DataType, T>(treeContext, input_mask, context, perLevelFlags);
+          mask = new multilevelgrid::GraficMask<DataType, T>(&context, input_mask);
+          mask->setPrecomputedFlags(perLevelFlags);
+        }
 
         lengthFactorHeader = 1. / cosmology.hubble; // Gadget Mpc a h^-1 -> GrafIC file Mpc a
         lengthFactorDisplacements = 1.; // Mpc a h^-1 expected. Strange inconsistency with header, but this seems to be correct (see note on RAMSES above).
