@@ -88,6 +88,23 @@ namespace multilevelgrid {
       //TODO Add Lagrangian volume definition if it bothers you
     }
 
+    /*! \brief Install an externally-computed per-level mask, bypassing calculateMask().
+     *
+     * Used by the multi-void union path (grafic_union.hpp), where the refinement footprint is computed directly
+     * on the collapsed linear union context rather than derived from the sibling-tree hierarchy. Every level is
+     * given an explicit flag set (so the "empty level => refine everywhere" shortcut in isInMask never fires for
+     * the union grids, which must refine only the masked void footprints and not the gaps between voids).
+     */
+    void setPrecomputedFlags(std::vector<std::vector<size_t>> perLevelFlags) {
+      assert(perLevelFlags.size() == this->flaggedIdsAtEachLevel.size());
+      this->flaggedIdsAtEachLevel = std::move(perLevelFlags);
+      for (size_t level = 0; level < this->flaggedIdsAtEachLevel.size(); ++level) {
+        sortAndEraseDuplicate(level);
+        if (!this->flaggedIdsAtEachLevel[level].empty())
+          this->deepestLevelWithMaskedCells = int(level);
+      }
+    }
+
 
   protected:
     //! Returns the nearest real (non-virtual) ancestor of the given level by walking parent pointers.

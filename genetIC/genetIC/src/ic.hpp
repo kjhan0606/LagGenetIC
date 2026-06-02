@@ -1095,12 +1095,25 @@ public:
                                                                   subsample, supersample);
     }
 
-    auto dumpingMask = multilevelgrid::GraficMask<GridDataType, T>(&newcontext, this->zoomParticleArray);
-    dumpingMask.calculateMask();
+    multilevelgrid::MultiLevelGrid<GridDataType> maskContext;
+    auto dumpingMask = [&]() {
+      if (newcontext.getNumRungs() == newcontext.getNumLevels()) {
+        multilevelgrid::adoptLevels(newcontext, maskContext);
+        auto m = std::make_shared<multilevelgrid::GraficMask<GridDataType, T>>(&maskContext, this->zoomParticleArray);
+        m->calculateMask();
+        return m;
+      } else {
+        std::vector<std::vector<size_t>> perLevelFlags;
+        multilevelgrid::buildGraficUnionContext<GridDataType, T>(newcontext, this->zoomParticleArray, maskContext,
+                                                                 perLevelFlags);
+        auto m = std::make_shared<multilevelgrid::GraficMask<GridDataType, T>>(&maskContext, this->zoomParticleArray);
+        m->setPrecomputedFlags(perLevelFlags);
+        return m;
+      }
+    }();
 
-
-    auto maskfield = dumpingMask.convertToField();
-    for (size_t level = 0; level < newcontext.getNumLevels(); level++) {
+    auto maskfield = dumpingMask->convertToField();
+    for (size_t level = 0; level < maskContext.getNumLevels(); level++) {
       dumpGridData(level, maskfield->getFieldForLevel(level), "mask");
     }
   }
