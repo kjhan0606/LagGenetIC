@@ -57,7 +57,6 @@ namespace multilevelgrid {
     explicit GraficMask(MultiLevelGrid <DataType> *multilevelgrid_,
                         std::vector<std::vector<size_t>> &input_mask) :
       AbstractBaseMask<DataType, T>(multilevelgrid_), inputzoomParticlesAsMask(input_mask) {
-      assert(inputzoomParticlesAsMask.size() <= this->flaggedIdsAtEachLevel.size());
     };
 
     /*!
@@ -78,6 +77,12 @@ namespace multilevelgrid {
 
     //! Processes the information in the multi-level context and uses it to create a graphic mask
     void calculateMask() override {
+      // Each input mask is the set of parent cells flagged to open one real zoom grid, so in the
+      // conventional nested stack there cannot be more masks than levels. The multi-void union path
+      // does NOT call calculateMask() (it installs per-level flags via setPrecomputedFlags()), where
+      // inputzoomParticlesAsMask instead holds one entry per disjoint sibling void and this bound -
+      // #voids <= #union-levels - need not hold. Hence the check lives here, not in the constructor.
+      assert(inputzoomParticlesAsMask.size() <= this->flaggedIdsAtEachLevel.size());
       identifyLevelsOfInputMask();
       generateFlagsHierarchy();
       ensureFlaggedVolumeIsContinuous();
