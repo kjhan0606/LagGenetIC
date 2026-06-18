@@ -131,6 +131,23 @@ namespace io {
         auto evaluator_dm = generators[particle::dm]->makeParticleEvaluatorForGrid(targetGrid);
         auto overdensityFieldEvaluator = generators[particle::baryon]->makeOverdensityEvaluatorForGrid(targetGrid);
 
+        // Two-fluid ICs: if per-species velocity generators are present (built from the CAMB
+        // Newtonian-gauge velocity transfers), use them for the CDM and baryon velocities and
+        // additionally write ic_velb{x,y,z}. We read the generators' ".vel" (= velocityToOffsetRatio
+        // * inverse-Laplacian(T_v * white-noise)). The per-species velocity transfer T_v carries
+        // the relative growth that makes baryons lag CDM, while the f*H*sqrt(a) velocityToOffsetRatio
+        // restores the physical km/s normalisation -- this CAMB file normalises T_v to density units
+        // (T_v ~= T_delta as k->0), so the f*H*sqrt(a) factor is required, NOT dropped.
+        // Otherwise fall back to the legacy single-fluid behaviour (DM particle velocity, no ic_velb*).
+        bool twoFluid = (generators.count(particle::dm_velocity) > 0)
+                        && (generators.count(particle::baryon_velocity) > 0);
+        std::shared_ptr<const particle::ParticleEvaluator<DataType>> evaluator_velc = nullptr;
+        std::shared_ptr<const particle::ParticleEvaluator<DataType>> evaluator_velb = nullptr;
+        if (twoFluid) {
+          evaluator_velc = generators[particle::dm_velocity]->makeParticleEvaluatorForGrid(targetGrid);
+          evaluator_velb = generators[particle::baryon_velocity]->makeParticleEvaluatorForGrid(targetGrid);
+        }
+
         const grids::Grid<T> &baseGrid = context.getGridForLevel(0);
         size_t effective_size = tools::getRatioAndAssertPositiveInteger(baseGrid.cellSize * baseGrid.size,
                                                                         targetGrid.cellSize);
@@ -141,19 +158,22 @@ namespace io {
         mkdir(thisGridFilename.c_str(), 0777);
 
 
+        // Float-valued fields written for every cell. For two-fluid ICs we additionally write the
+        // baryon peculiar velocity (ic_velbx/y/z). ic_particle_ids (size_t) is handled separately.
         std::vector<std::string> filenames = {"ic_velcx", "ic_velcy", "ic_velcz", "ic_poscx", "ic_poscy",
-                                              "ic_poscz", "ic_deltab", "ic_refmap", "ic_pvar_00001", "ic_particle_ids"};
+                                              "ic_poscz", "ic_deltab", "ic_refmap", "ic_pvar_00001"};
+        if (twoFluid) {
+          filenames.push_back("ic_velbx");
+          filenames.push_back("ic_velby");
+          filenames.push_back("ic_velbz");
+        }
+        const size_t nFloatFields = filenames.size();
+        filenames.push_back("ic_particle_ids");
 
-        std::vector<size_t> block_lengths = {sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(float) * targetGrid.size2,
-                                             sizeof(size_t) * targetGrid.size2};
+        std::vector<size_t> block_lengths;
+        for (size_t i = 0; i < nFloatFields; ++i)
+          block_lengths.push_back(sizeof(float) * targetGrid.size2);
+        block_lengths.push_back(sizeof(size_t) * targetGrid.size2);
 
         std::vector<tools::MemMapFileWriter> files;
 
@@ -177,10 +197,10 @@ namespace io {
           pb.tick();
 
           std::vector<tools::MemMapRegion<float>> varMaps;
-          for (int m = 0; m < 9; ++m)
+          for (size_t m = 0; m < nFloatFields; ++m)
             varMaps.push_back(files[m].getMemMapFortran<float>(targetGrid.size2));
 
-          tools::MemMapRegion<size_t> idMap = files[9].getMemMapFortran<size_t>(targetGrid.size2);
+          tools::MemMapRegion<size_t> idMap = files[nFloatFields].getMemMapFortran<size_t>(targetGrid.size2);
 
 #pragma omp parallel for
           for (size_t i_y = 0; i_y < targetGrid.size; ++i_y) {
@@ -189,9 +209,16 @@ namespace io {
               size_t global_index = i + iordOffset;
               auto particle = evaluator_dm->getParticleNoOffset(i);
 
-              Coordinate<float> velScaled(particle.vel * velFactor);
               Coordinate<float> posScaled(particle.pos * lengthFactorDisplacements);
 
+              // CDM peculiar velocity. For two-fluid ICs this is the ".vel" of the CDM
+              // velocity-transfer generator (velocityToOffsetRatio * inverse-Laplacian(T_v_cdm*WN)).
+              // Otherwise fall back to the legacy DM velocity (built from the density field).
+              Coordinate<float> velcScaled;
+              if (twoFluid)
+                velcScaled = Coordinate<float>(evaluator_velc->getParticleNoOffset(i).vel * velFactor);
+              else
+                velcScaled = Coordinate<float>(particle.vel * velFactor);
 
               float deltab = (*overdensityFieldEvaluator)[i];
 
@@ -201,15 +228,21 @@ namespace io {
               size_t file_index = i_y * targetGrid.size + i_x;
 
 
-              varMaps[0][file_index] = velScaled.x;
-              varMaps[1][file_index] = velScaled.y;
-              varMaps[2][file_index] = velScaled.z;
+              varMaps[0][file_index] = velcScaled.x;
+              varMaps[1][file_index] = velcScaled.y;
+              varMaps[2][file_index] = velcScaled.z;
               varMaps[3][file_index] = posScaled.x;
               varMaps[4][file_index] = posScaled.y;
               varMaps[5][file_index] = posScaled.z;
               varMaps[6][file_index] = deltab;
               varMaps[7][file_index] = mask;
               varMaps[8][file_index] = pvar;
+              if (twoFluid) {
+                Coordinate<float> velbScaled(evaluator_velb->getParticleNoOffset(i).vel * velFactor);
+                varMaps[9][file_index] = velbScaled.x;
+                varMaps[10][file_index] = velbScaled.y;
+                varMaps[11][file_index] = velbScaled.z;
+              }
               idMap[file_index] = global_index;
 
             }
