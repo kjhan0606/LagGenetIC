@@ -267,8 +267,9 @@ public:
   //! produces more accurate results for baryons than assuming they follow the same transfer function
   //! (which holds only at late times).
   void setUsingBaryons() {
-    throw std::runtime_error("Sorry, use of the baryon transfer function currently has a bug which makes it highly inaccurate. "
-                             "This is being fixed and in current versions it is disabled.");
+    // Two-fluid ICs: density fields are built per-species from the CAMB density transfers, and
+    // peculiar velocities per-species from the post-2015 CAMB Newtonian-gauge velocity (theta)
+    // transfers. The grafic writer emits ic_velc*/ic_velb*/ic_deltab accordingly.
     this->useBaryonTransferFunction = true;
   }
 
@@ -940,17 +941,31 @@ public:
     assert(outputFields.size()==1);
 
     if(useBaryonTransferFunction) {
-      // make a copy of the white noise field:
-      outputFields.emplace_back(std::make_shared<fields::OutputField<GridDataType>>(*outputFields[0]));
+      // Two-fluid ICs: build separate density fields for CDM and baryons, plus separate
+      // peculiar-velocity fields for each species from the CAMB Newtonian-gauge velocity
+      // (theta) transfers. All are independent copies of the same underlying white noise,
+      // so phases are shared and the relative density/velocity normalisation from CAMB is
+      // preserved automatically.
+      // outputFields layout: [0]=dm density, [1]=baryon density,
+      //                       [2]=dm velocity,  [3]=baryon velocity.
+      outputFields.emplace_back(std::make_shared<fields::OutputField<GridDataType>>(*outputFields[0])); // [1] baryon density
+      outputFields.emplace_back(std::make_shared<fields::OutputField<GridDataType>>(*outputFields[0])); // [2] dm velocity
+      outputFields.emplace_back(std::make_shared<fields::OutputField<GridDataType>>(*outputFields[0])); // [3] baryon velocity
+
       outputFields[1]->applyPowerSpectrumFor(particle::species::baryon);
+      outputFields[2]->applyPowerSpectrumFor(particle::species::dm_velocity);
+      outputFields[3]->applyPowerSpectrumFor(particle::species::baryon_velocity);
       outputFields[0]->applyPowerSpectrumFor(particle::species::dm);
     } else {
       outputFields[0]->applyPowerSpectrumFor(particle::species::all);
     }
 
     // Check everything has worked as expected (e.g. no accidental pointer copying)
-    if(useBaryonTransferFunction)
+    if(useBaryonTransferFunction) {
       assert(outputFields[1]->getTransferType() == particle::species::baryon);
+      assert(outputFields[2]->getTransferType() == particle::species::dm_velocity);
+      assert(outputFields[3]->getTransferType() == particle::species::baryon_velocity);
+    }
 
   }
 
@@ -1196,6 +1211,15 @@ public:
 
     if(!useBaryonTransferFunction)
       assert(pParticleGenerator[particle::baryon]==pParticleGenerator[particle::dm]);
+
+    // Two-fluid ICs: build Zeldovich generators on the per-species velocity (theta) fields.
+    // Their ".pos" output is inverse-Laplacian( T_v * white-noise ), i.e. the physical
+    // peculiar velocity in displacement units; we deliberately read ".pos" (not ".vel") in
+    // grafic so the f*H*sqrt(a) velocityToOffsetRatio is NOT applied to these.
+    if(useBaryonTransferFunction) {
+      ensureParticleGeneratorInitialised(particle::dm_velocity);
+      ensureParticleGeneratorInitialised(particle::baryon_velocity);
+    }
 
   }
 

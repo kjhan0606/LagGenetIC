@@ -10,7 +10,8 @@ namespace particle {
   class AbstractMultiLevelParticleGenerator;
 
   enum species {
-    dm = 0, baryon = 1, whitenoise = 2, unknown = 3, all = 4
+    dm = 0, baryon = 1, whitenoise = 2, unknown = 3, all = 4,
+    dm_velocity = 5, baryon_velocity = 6
   };
 
   std::istream &operator>>(std::istream &inputStream, species &sp) {
@@ -28,6 +29,10 @@ namespace particle {
         sp = species::whitenoise;
       } else if (s == "all") {
         sp = species::all;
+      } else if (s == "dm_velocity") {
+        sp = species::dm_velocity;
+      } else if (s == "baryon_velocity") {
+        sp = species::baryon_velocity;
       } else {
         inputStream.setstate(std::ios::failbit);
       }
@@ -46,6 +51,12 @@ namespace particle {
         break;
       case species::whitenoise:
         outputStream << "whitenoise";
+        break;
+      case species::dm_velocity:
+        outputStream << "dm_velocity";
+        break;
+      case species::baryon_velocity:
+        outputStream << "baryon_velocity";
         break;
       default:
         outputStream << "unknown";

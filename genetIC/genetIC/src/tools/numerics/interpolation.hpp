@@ -108,6 +108,44 @@ namespace tools {
         return std::exp(Interpolator<T>::operator()(logx));
       }
     };
+
+    /*! \class LogLinInterpolator
+     *  \brief Interpolates in log(x) but keeps y linear, so it is safe for
+     *  transfer functions whose values may be negative or change sign
+     *  (e.g. the Newtonian-gauge velocity transfers, theta(k)).
+     *
+     *  Mirrors LogInterpolator's domain handling (returns 0 outside the
+     *  tabulated k-range) but never takes log(y).
+     */
+    template<typename T>
+    class LogLinInterpolator : Interpolator<T> {
+    protected:
+      std::vector<T> logx;
+      std::vector<T> liny;
+
+    public:
+      void initialise(std::vector<T> &x, std::vector<T> &y) override {
+        const T inf = std::numeric_limits<T>::infinity();
+        assert(x.size()==y.size());
+        for(size_t i = 0; i<x.size(); ++i) {
+          T logx_i = std::log(x[i]);
+          if(logx_i!=inf && logx_i!=-inf && !std::isnan(logx_i)
+            && !std::isnan(y[i])) {
+            logx.push_back(logx_i);
+            liny.push_back(y[i]);
+          }
+        }
+        if(logx.size()<2)
+          throw std::range_error("Could not find enough valid values in the velocity transfer function.");
+        Interpolator<T>::initialise(logx, liny);
+      }
+
+      T operator()(T x) const override {
+        T logx = std::log(x);
+        if(logx<this->minx || logx>this->maxx) return T(0);
+        return Interpolator<T>::operator()(logx);
+      }
+    };
   }
 }
 #endif

@@ -181,11 +181,20 @@ namespace cosmology {
     const std::map<particle::species, size_t> speciesToCambColumn
       {{particle::species::dm, 1},
        {particle::species::baryon, 2},
-       {particle::species::all, 6 // if using a single transfer function, use the column for total
-     }};
-      //!< Columns of CAMB that we request for DM and baryons respectively
+       {particle::species::all, 6}, // if using a single transfer function, use the column for total
+       // Post-2015 CAMB Newtonian-gauge velocity transfers (theta(k)). 0-based column indices:
+       {particle::species::dm_velocity, 10},
+       {particle::species::baryon_velocity, 11}};
+      //!< Columns of CAMB that we request for DM, baryons and their peculiar velocities
 
-    std::map<particle::species, tools::numerics::LogInterpolator<double>> speciesToTransferFunction; //!< Interpolation functions:
+    //! Returns true if the species corresponds to a velocity (theta) transfer rather than a density transfer
+    static bool isVelocitySpecies(particle::species s) {
+      return s == particle::species::dm_velocity || s == particle::species::baryon_velocity;
+    }
+
+    std::map<particle::species, tools::numerics::LogInterpolator<double>> speciesToTransferFunction; //!< Density interpolation functions:
+    //! Velocity (theta) transfer functions can be negative / change sign, so use a sign-safe interpolator:
+    std::map<particle::species, tools::numerics::LogLinInterpolator<double>> speciesToVelocityTransferFunction;
     CoordinateType amplitude; //!< Amplitude of the initial power spectrum
     CoordinateType ns;        //!< tensor to scalar ratio of the initial power spectrum
     mutable CoordinateType kcamb_max_in_file; //!< Maximum CAMB wavenumber. If too small compared to grid resolution, Meszaros solution will be computed
@@ -195,7 +204,10 @@ namespace cosmology {
     CAMB(const CosmologicalParameters<CoordinateType> &cosmology, const std::string &filename) {
       readLinesFromCambOutput(filename);
       for (auto i = speciesToInterpolationPoints.begin(); i != speciesToInterpolationPoints.end(); ++i) {
-        this->speciesToTransferFunction[i->first].initialise(kInterpolationPoints, i->second);
+        if (isVelocitySpecies(i->first))
+          this->speciesToVelocityTransferFunction[i->first].initialise(kInterpolationPoints, i->second);
+        else
+          this->speciesToTransferFunction[i->first].initialise(kInterpolationPoints, i->second);
       }
       ns = cosmology.ns;
       calculateOverallNormalization(cosmology);
@@ -203,9 +215,12 @@ namespace cosmology {
 
     CoordinateType operator()(CoordinateType k, particle::species transferType) const override {
       CoordinateType linearTransfer;
-      if (k != 0)
-        linearTransfer = speciesToTransferFunction.at(transferType)(k);
-      else
+      if (k != 0) {
+        if (isVelocitySpecies(transferType))
+          linearTransfer = speciesToVelocityTransferFunction.at(transferType)(k);
+        else
+          linearTransfer = speciesToTransferFunction.at(transferType)(k);
+      } else
         linearTransfer = 0.0;
 
       if (k > kcamb_max_in_file) {
