@@ -184,13 +184,20 @@ namespace io {
           writeHeaderForGrid(files.back(), targetGrid);
         }
 
-        std::shared_ptr<fields::Field<DataType, T>> baryonFieldOnLevelPtr = nullptr;
+        // Ensure all output fields are in real space before they are evaluated below.
+        // NB: we deliberately do NOT fetch a per-level baryon field via
+        // getFieldForLevel(level) here. `level` indexes the grafic OUTPUT context, which
+        // for zoom output contains virtual super/sub-sample grids that are absent from the
+        // field's own (real-grid-only) context; getFieldForLevel(level) therefore runs off
+        // the end of the field at deep zoom levels and segfaults in shared_from_this() on a
+        // garbage Field. The baryon overdensity (ic_deltab) is instead obtained per-grid via
+        // makeOverdensityEvaluatorForGrid (overdensityFieldEvaluator above), which resolves
+        // virtual grids correctly. This block was dormant upstream (the legacy baryon path
+        // was disabled, so outputFields.size()==1); the two-fluid path activates it.
         if (this->outputFields.size() > 1) {
           for (size_t i = 0; i < outputFields.size(); i++) {
             this->outputFields[i]->toReal(); // Field should be output in real space
           }
-
-          baryonFieldOnLevelPtr = outputFields[1]->getFieldForLevel(level).shared_from_this();
         }
 
         for (size_t i_z = 0; i_z < targetGrid.size; ++i_z) {
