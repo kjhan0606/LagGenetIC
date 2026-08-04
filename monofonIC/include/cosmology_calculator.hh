@@ -349,8 +349,15 @@ public:
         m_n_s_ = cosmo_param_["n_s"];
         m_sqrtpnorm_ = cosmo_param_["sqrtpnorm"];
         
-        double k_p = cosmo_param_["k_p"] / cosmo_param_["h"];
-        tnorm_ = std::sqrt(2.0 * M_PI * M_PI * cosmo_param_["A_s"] * std::pow(1.0 / k_p, cosmo_param_["n_s"] - 1) / std::pow(2.0 * M_PI, 3.0));
+        if (cosmo_param_["A_s"] > 0.0) {
+            double k_p = cosmo_param_["k_p"] / cosmo_param_["h"];
+            tnorm_ = std::sqrt(2.0 * M_PI * M_PI * cosmo_param_["A_s"] * std::pow(1.0 / k_p, cosmo_param_["n_s"] - 1) / std::pow(2.0 * M_PI, 3.0));
+        } else {
+            // get_transfer() is only needed by the primordial non-Gaussian
+            // path, which already requires A_s. Avoid sqrt(A_s < 0) for
+            // otherwise valid sigma_8-normalised Gaussian runs.
+            tnorm_ = 1.0;
+        }
     }
 
     //! destructor

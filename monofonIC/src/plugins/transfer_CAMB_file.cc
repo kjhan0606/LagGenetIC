@@ -29,6 +29,7 @@ private:
   interpolated_function_1d<true, true, false> delta_c_, delta_b_, delta_n_, delta_m_, theta_c_, theta_b_, theta_n_, theta_m_;
 
   double m_kmin, m_kmax;
+  double normalisation_factor_{1.0};
 
   // bool m_linbaryoninterp;
 
@@ -162,6 +163,32 @@ public:
 
     std::string filename = pcf_->get_value<std::string>("cosmology", "transfer_file");
 
+    if (cosmo_params_["A_s"] > 0.0)
+    {
+      const double h = cosmo_params_["h"];
+      const double k_p = cosmo_params_["k_p"] / h;
+      const double tnorm = std::sqrt(2.0 * M_PI * M_PI * cosmo_params_["A_s"]
+                                     * std::pow(1.0 / k_p, cosmo_params_["n_s"] - 1.0)
+                                     / std::pow(2.0 * M_PI, 3.0));
+
+      // CAMB outputs Delta/k_phys^2, while monofonIC's k and box units are
+      // h/Mpc and Mpc/h. The h^2 factor converts the raw transfer to
+      // Delta/k_h^2 before applying the primordial-curvature normalisation.
+      normalisation_factor_ = h * h * tnorm;
+      tf_isnormalised_ = true;
+      music::ilog << "CAMB_file: Using A_s=" << colors::CONFIG_VALUE << cosmo_params_["A_s"]
+                  << colors::RESET << " at k_p=" << colors::CONFIG_VALUE << cosmo_params_["k_p"]
+                  << colors::RESET << " Mpc^-1 to normalise the transfer file." << std::endl;
+    }
+    else
+    {
+      if (cosmo_params_["sigma_8"] <= 0.0)
+        throw std::runtime_error("CAMB_file requires either a positive A_s or sigma_8");
+      tf_isnormalised_ = false;
+      music::ilog << "CAMB_file: Using sigma_8=" << colors::CONFIG_VALUE << cosmo_params_["sigma_8"]
+                  << colors::RESET << " for numerical normalisation." << std::endl;
+    }
+
     this->read_table( filename );
 
     // set properties of this transfer function plugin:
@@ -185,33 +212,33 @@ public:
     {
     case delta_matter0:
     case delta_matter:  
-      return delta_m_(k);
+      return delta_m_(k) * normalisation_factor_;
 
     case delta_cdm0:
     case delta_cdm:
-      return delta_c_(k);
+      return delta_c_(k) * normalisation_factor_;
 
     case delta_baryon0:
     case delta_baryon:
-      return delta_b_(k);
+      return delta_b_(k) * normalisation_factor_;
 
     case theta_matter0:
     case theta_matter:
-      return theta_m_(k);
+      return theta_m_(k) * normalisation_factor_;
 
     case theta_cdm0:
     case theta_cdm:
-      return theta_c_(k);
+      return theta_c_(k) * normalisation_factor_;
 
     case theta_baryon0:
     case theta_baryon:
-      return theta_b_(k);
+      return theta_b_(k) * normalisation_factor_;
 
     case delta_bc:
-      return delta_b_(k)-delta_c_(k);
+      return (delta_b_(k)-delta_c_(k)) * normalisation_factor_;
     
     case theta_bc:
-      return theta_b_(k)-theta_c_(k);
+      return (theta_b_(k)-theta_c_(k)) * normalisation_factor_;
 
     default:
       throw std::runtime_error("Invalid type requested in transfer function evaluation");

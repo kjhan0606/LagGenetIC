@@ -553,6 +553,22 @@ foreach(CONFIG ${TF_CONFIGS})
     add_transfer_test("eisenstein" ${CONFIG})
 endforeach()
 
+# Verify the analytic A_s normalization of a post-2015 CAMB transfer table.
+add_test(
+    NAME test_transfer_CAMB_file_As_normalization
+    COMMAND ${Python3_EXECUTABLE}
+            ${TEST_SCRIPT_DIR}/check_camb_file_As_normalization.py
+            $<TARGET_FILE:test_transfer_functions>
+            ${TEST_CONFIG_DIR}/transfer/camb_file_As.conf
+            ${TEST_CONFIG_DIR}/transfer/camb_file_sigma8.conf
+            ${TEST_CONFIG_DIR}/transfer/camb_transfer_kmax40_z0_post2015.dat
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(test_transfer_CAMB_file_As_normalization PROPERTIES
+    TIMEOUT 120
+    LABELS "transfer;regression;normalization"
+)
+
 message(STATUS "")
 message(STATUS "Transfer function regression tests configured")
 message(STATUS "  Generate references with: cd build && bash ../tests/scripts/generate_transfer_references.sh")
