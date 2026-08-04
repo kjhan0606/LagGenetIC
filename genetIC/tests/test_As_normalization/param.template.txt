@@ -1,0 +1,19 @@
+# A_s versus sigma_8 normalization regression at z=0.
+Om 0.279
+Ol 0.721
+Ob 0.0
+ns 0.96
+hubble 0.701
+zin 0
+
+@NORMALIZATION@
+random_seed_real_space 8896131
+camb @TRANSFER@
+
+outname normalization
+outdir @OUTDIR@
+outformat tipsy
+basegrid 50.0 16
+
+done
+dump_ps 0

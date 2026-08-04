@@ -293,7 +293,27 @@ public:
 
   //! Sets the sigma8 parameter.
   void setSigma8(T in) {
+    if (in <= 0)
+      throw std::runtime_error("s8 must be positive");
+    if (cosmology.primordialAmplitude > 0)
+      throw std::runtime_error("Specify only one of s8 or A_s");
     cosmology.sigma8 = in;
+  }
+
+  //! Sets the primordial scalar amplitude A_s.
+  void setPrimordialAmplitude(T in) {
+    if (in <= 0)
+      throw std::runtime_error("A_s must be positive");
+    if (cosmology.sigma8 > 0)
+      throw std::runtime_error("Specify only one of s8 or A_s");
+    cosmology.primordialAmplitude = in;
+  }
+
+  //! Sets the primordial pivot k_p in physical Mpc^-1.
+  void setPrimordialPivot(T in) {
+    if (in <= 0)
+      throw std::runtime_error("k_p must be positive");
+    cosmology.primordialPivot = in;
   }
 
   //! Set the normalisation of the cell softening scale. Defaults to 0.01075
@@ -819,6 +839,10 @@ public:
   * \param cambFieldPath - string of path to CAMB file
   */
   void setCambDat(std::string cambFilePath) {
+    const bool hasSigma8 = cosmology.sigma8 > 0;
+    const bool hasAs = cosmology.primordialAmplitude > 0;
+    if (hasSigma8 == hasAs)
+      throw std::runtime_error("Specify exactly one of s8 or A_s before the camb command");
     spectrum = std::make_unique<cosmology::CAMB<GridDataType>>(this->cosmology, cambFilePath);
     this->multiLevelContext.setPowerspectrumGenerator(*spectrum);
   }

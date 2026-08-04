@@ -197,6 +197,7 @@ namespace cosmology {
     std::map<particle::species, tools::numerics::LogLinInterpolator<double>> speciesToVelocityTransferFunction;
     CoordinateType amplitude; //!< Amplitude of the initial power spectrum
     CoordinateType ns;        //!< tensor to scalar ratio of the initial power spectrum
+    CoordinateType transferNormalisation; //!< First low-k CDM transfer value used to scale imported columns
     mutable CoordinateType kcamb_max_in_file; //!< Maximum CAMB wavenumber. If too small compared to grid resolution, Meszaros solution will be computed
 
   public:
@@ -266,14 +267,15 @@ namespace cosmology {
         }
 
 
-        CoordinateType transferNormalisation = input[1]; // to normalise CAMB transfer function so T(0)= 1, doesn't matter if we normalise here in terms of accuracy, but feels more natural
+        transferNormalisation = input[1]; // normalise CAMB transfer functions so the first CDM value is one
         // Copy file into vectors. Normalise both so that the DM tranfer function starts at 1.
         for (j = 0; j < input.size() / numCols; j++) {
           if (input[numCols * j] > 0) {
             // hard-coded to first two columns of CAMB file -
             kInterpolationPoints.push_back(CoordinateType(input[numCols * j]));
             for (auto i = speciesToCambColumn.begin(); i != speciesToCambColumn.end(); ++i) {
-              speciesToInterpolationPoints[i->first].push_back(CoordinateType(input[numCols * j + i->second]) / transferNormalisation);
+              if (i->second < static_cast<size_t>(numCols))
+                speciesToInterpolationPoints[i->first].push_back(CoordinateType(input[numCols * j + i->second]) / transferNormalisation);
             }
           } else continue;
         }
@@ -302,12 +304,36 @@ namespace cosmology {
 
       //! Return the cosmology-dependent part of the normalisation of the power spectrum.
       void calculateOverallNormalization(const CosmologicalParameters<CoordinateType> &cosmology) {
-        CoordinateType ourGrowthFactor = growthFactor(cosmology);
-        CoordinateType growthFactorNormalized = ourGrowthFactor / growthFactor(cosmologyAtRedshift(cosmology, 0));
-        CoordinateType sigma8PreNormalization = calculateLinearVarianceInSphere(8.);
-        CoordinateType linearRenormFactor = (cosmology.sigma8 / sigma8PreNormalization) * growthFactorNormalized;
+        const bool hasSigma8 = cosmology.sigma8 > 0;
+        const bool hasAs = cosmology.primordialAmplitude > 0;
+        if (hasSigma8 == hasAs)
+          throw std::runtime_error("Specify exactly one of s8 or A_s");
 
-        amplitude = linearRenormFactor * linearRenormFactor;
+        if (hasAs) {
+          if (cosmology.hubble <= 0 || cosmology.primordialPivot <= 0)
+            throw std::runtime_error("hubble and k_p must be positive for A_s normalisation");
+
+          // CAMB stores k in h/Mpc but its density transfers are Delta/k_phys^2.
+          // CAMB's own hubble-unit power-spectrum convention is
+          // P_h = 2*pi^2 A_s h^3 k_phys T^2 (k_phys/k_p)^(n_s-1).
+          // The imported transfers have been divided by transferNormalisation,
+          // so its square is restored in the overall coefficient below.
+          amplitude = 2.0 * M_PI * M_PI * cosmology.primordialAmplitude
+                    * pow(cosmology.hubble, ns + 3.0)
+                    * pow(cosmology.primordialPivot, 1.0 - ns)
+                    * transferNormalisation * transferNormalisation;
+          logging::entry() << "Normalising CAMB transfer functions with A_s="
+                           << cosmology.primordialAmplitude << " at k_p="
+                           << cosmology.primordialPivot << " Mpc^-1; using the transfer file redshift directly"
+                           << std::endl;
+        } else {
+          CoordinateType ourGrowthFactor = growthFactor(cosmology);
+          CoordinateType growthFactorNormalized = ourGrowthFactor / growthFactor(cosmologyAtRedshift(cosmology, 0));
+          CoordinateType sigma8PreNormalization = calculateLinearVarianceInSphere(8.);
+          CoordinateType linearRenormFactor = (cosmology.sigma8 / sigma8PreNormalization) * growthFactorNormalized;
+
+          amplitude = linearRenormFactor * linearRenormFactor;
+        }
       }
 
 

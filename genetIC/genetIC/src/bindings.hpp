@@ -18,6 +18,10 @@ void setup_parser(tools::ClassDispatch<ICType, void> &dispatch) {
     dispatch.add_class_route("Ol", &ICType::setOmegaLambda0);
     dispatch.add_class_route("hubble", &ICType::setHubble);
     dispatch.add_class_route("s8", &ICType::setSigma8);
+    dispatch.add_class_route("A_s", &ICType::setPrimordialAmplitude);
+    dispatch.add_class_route("As", &ICType::setPrimordialAmplitude);
+    dispatch.add_class_route("k_p", &ICType::setPrimordialPivot);
+    dispatch.add_class_route("kpivot", &ICType::setPrimordialPivot);
     dispatch.add_class_route("ns", &ICType::setns);
     dispatch.add_class_route("zin", &ICType::setZ0);
     dispatch.add_class_route("z", &ICType::setZ0);

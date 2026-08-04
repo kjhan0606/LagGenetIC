@@ -25,7 +25,9 @@ namespace cosmology {
     FloatType redshift; //!< Redshift at which we are generating the initial conditions.
     FloatType scalefactor; //!< Scale factor at this redshift, relative to the scale factor at z = 0
     FloatType scalefactorAtDecoupling; //!< Scale factor at baryon-photon decoupling (z~150, NOT photon-baryon decoupling at z~1100)
-    FloatType sigma8; //!< Sigma8 parameter
+    FloatType sigma8 = -1; //!< Sigma8 parameter; negative when A_s normalisation is selected
+    FloatType primordialAmplitude = -1; //!< Primordial scalar amplitude A_s; negative when sigma8 is selected
+    FloatType primordialPivot = 0.05; //!< Primordial scalar pivot k_p in physical Mpc^-1
     FloatType ns; //!< Scalar spectral index
     FloatType TCMB; //!< CMB temperature today, in K
 
