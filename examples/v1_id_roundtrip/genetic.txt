@@ -1,0 +1,20 @@
+# V1 GenetIC stage. Run in a case directory containing wn.npy and camb.dat.
+
+Om     0.279
+Ol     0.721
+s8     0.817
+ns     0.96
+hubble 0.701
+zin    99
+camb   camb.dat
+
+random_seed_real_space 8896131
+
+outname   v1
+outdir    ./
+outformat grafic
+
+base_grid 64.0 128
+import_level_as 0 wn.npy whitenoise
+done
+

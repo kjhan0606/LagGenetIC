@@ -22,6 +22,14 @@ IC-generation codes used by the VoidSim project:
 Each subdirectory has its own build system and documentation; see the
 README inside each for build/usage instructions.
 
+## VoidSim full-stack validation
+
+`examples/v1_id_roundtrip/` contains the reproducible 128^3 V1 regression for
+the monofonIC -> GenetIC -> lagRamses particle-ID contract. It runs both the
+classical slab and k-section monofonIC particle paths, checks that their parent
+white-noise dumps and GenetIC grafic fields are bit-identical, then verifies
+exact ID and initial-position preservation through four-rank lagRamses runs.
+
 Upstream commits at the time of fresh-start:
 - monofonIC: based on `bca7fa4` (with KSectionHalo + masked support);
   subsequent local commits add glass-on-k-section (Phase 4) and the
