@@ -77,6 +77,11 @@ GenetIC `id_file` round trip. The evolved-parent integration advances a
 64-cubed DMO parent beyond `a=1`, finds the most populated HOP halo, and checks
 its compact Lagrangian envelope in the initial snapshot.
 
+`examples/v3_inverted_closed_loop/` applies `reverse` to a non-wrapping V2
+halo mask and generates matched normal and inverted two-level GRAFIC ICs. The
+regression verifies exact cellwise sign inversion, masked lagRamses refinement,
+coarse-particle replacement, and unique Lagrangian IDs.
+
 Upstream commits at the time of fresh-start:
 - monofonIC: based on `bca7fa4` (with KSectionHalo + masked support);
   subsequent local commits add glass-on-k-section (Phase 4) and the

@@ -1,0 +1,26 @@
+# V3 inverted field using the same parent white noise and Lagrangian mask.
+
+Om     0.279
+Ol     0.721
+s8     0.817
+ns     0.96
+hubble 0.701
+zin    99
+camb   camb.dat
+
+random_seed_real_space 8896131
+
+outname   v3_inverted
+outdir    ./
+outformat grafic
+
+base_grid 64.0 64
+id_file halo.id
+zoom_grid 2 64
+
+import_level_as 0 wn.npy whitenoise
+reverse
+done
+
+dump_grid 0
+dump_grid 1
