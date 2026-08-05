@@ -1,0 +1,20 @@
+# VoidSim V4 level-9 DMO parent.  The CAMB table already represents z=49.
+Om     0.3099
+Ol     0.6901
+A_s    2.1064e-9
+k_p    0.05
+ns     0.96822
+hubble 0.67742
+zin    49
+camb   camb_transfer_z49.dat
+
+# Required for initialisation; import_level_as replaces the level-0 draw.
+random_seed_real_space 8896131
+
+outname   v4_parent
+outdir    ./
+outformat grafic
+
+base_grid 512.0 512
+import_level_as 0 wn_level0.npy whitenoise
+done

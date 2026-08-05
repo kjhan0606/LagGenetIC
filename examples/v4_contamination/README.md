@@ -60,3 +60,8 @@ output, and mask growth across all three periodic boundaries:
 ```bash
 python3 test_v4_contamination.py
 ```
+
+The production-scale parent gate and its resumable GPFS runner live in
+[`production/`](production/).  It fixes the level-9 cosmology, creates the
+lagCAMB table at the IC redshift, and verifies the full `512^3` particle-ID
+permutation after lagRamses ingestion.
