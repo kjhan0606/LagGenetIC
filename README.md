@@ -73,7 +73,9 @@ joins HOP group tags to the particle ordering of a DMO RAMSES parent snapshot
 and writes the selected zero-based Lagrangian IDs in GenetIC `id_file` format.
 The converter validates the full `0..N^3-1` ID permutation before it writes a
 mask. Its regression covers raw and Fortran-sequential HOP tags and an actual
-GenetIC `id_file` round trip.
+GenetIC `id_file` round trip. The evolved-parent integration advances a
+64-cubed DMO parent beyond `a=1`, finds the most populated HOP halo, and checks
+its compact Lagrangian envelope in the initial snapshot.
 
 Upstream commits at the time of fresh-start:
 - monofonIC: based on `bca7fa4` (with KSectionHalo + masked support);
