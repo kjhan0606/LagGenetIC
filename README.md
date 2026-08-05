@@ -68,6 +68,13 @@ classical slab and k-section monofonIC particle paths, checks that their parent
 white-noise dumps and GenetIC grafic fields are bit-identical, then verifies
 exact ID and initial-position preservation through four-rank lagRamses runs.
 
+`examples/v2_hop_id_file/` provides the next bridge in the zoom workflow. It
+joins HOP group tags to the particle ordering of a DMO RAMSES parent snapshot
+and writes the selected zero-based Lagrangian IDs in GenetIC `id_file` format.
+The converter validates the full `0..N^3-1` ID permutation before it writes a
+mask. Its regression covers raw and Fortran-sequential HOP tags and an actual
+GenetIC `id_file` round trip.
+
 Upstream commits at the time of fresh-start:
 - monofonIC: based on `bca7fa4` (with KSectionHalo + masked support);
   subsequent local commits add glass-on-k-section (Phase 4) and the
