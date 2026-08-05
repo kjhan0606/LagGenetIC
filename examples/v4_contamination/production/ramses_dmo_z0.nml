@@ -1,0 +1,43 @@
+! VoidSim V4 production parent: evolve the validated 512^3 DMO IC from
+! a=0.02 (z=49) to a=1.  This is a fixed level-9 parent run; AMR is used
+! only by the later zoom simulations.
+
+&RUN_PARAMS
+cosmo=.true.
+pic=.true.
+poisson=.true.
+hydro=.false.
+nrestart=0
+nremap=10
+ncontrol=1
+nstepmax=100000
+use_fftw=.true.
+verbose=.false.
+/
+
+&OUTPUT_PARAMS
+noutput=5
+aout=0.10,0.25,0.50,0.75,1.00
+/
+
+&INIT_PARAMS
+filetype='grafic'
+initfile(1)='../genetic/v4_parent.grafic_512'
+/
+
+&AMR_PARAMS
+levelmin=9
+levelmax=9
+ngridmax=450000
+npartmax=3000000
+nexpand=1
+boxlen=1.0
+/
+
+&POISSON_PARAMS
+epsilon=1.d-4
+/
+
+&PHYSICS_PARAMS
+omega_b=0.d0
+/

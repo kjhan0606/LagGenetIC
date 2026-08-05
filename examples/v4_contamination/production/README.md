@@ -18,6 +18,10 @@ The sequence is:
 6. the verifier checks the transfer coverage, exact HDF5/NumPy white-noise
    equality, Cartesian GRAFIC IDs, the complete RAMSES ID permutation, and the
    `A_s` branch reported by both IC codes.
+7. the production DMO run evolves that validated fixed level-9 parent from
+   `a=0.02` to `a=1` on one Grammar node with 64 MPI ranks.  It uses the FFTW3
+   base-grid Poisson solver, writes five snapshots, and verifies the final
+   particle-ID permutation before declaring success.
 
 Run all stages, or one named resumable stage, with:
 
@@ -30,6 +34,17 @@ Run all stages, or one named resumable stage, with:
 ./run_parent.sh ramses
 ./run_parent.sh verify
 ```
+
+After the level-9 gate passes, stage and submit the production evolution with:
+
+```bash
+./submit_dmo_z0.sh
+```
+
+The job is named `void_dmo512`; its run directory is
+`/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
+an existing run, rejects a changed lagRamses executable, and records the exact
+binary checksum and source revisions in `provenance.txt`.
 
 Successful stages leave `.STAGE.complete` markers in the GPFS work root.  Set
 `V4_WORKROOT` only to choose another dedicated GPFS directory; the runner
