@@ -82,6 +82,12 @@ halo mask and generates matched normal and inverted two-level GRAFIC ICs. The
 regression verifies exact cellwise sign inversion, masked lagRamses refinement,
 coarse-particle replacement, and unique Lagrangian IDs.
 
+`examples/v4_contamination/` measures low-resolution dark matter contamination
+within periodic `2 R_v` and `5 R_v` apertures. A failed gate can atomically
+write the next GenetIC `id_file` after adding a periodic parent-grid shell.
+The reader streams rank files and supports both legacy lagRamses particle types
+and current RAMSES family/tag records.
+
 Upstream commits at the time of fresh-start:
 - monofonIC: based on `bca7fa4` (with KSectionHalo + masked support);
   subsequent local commits add glass-on-k-section (Phase 4) and the
