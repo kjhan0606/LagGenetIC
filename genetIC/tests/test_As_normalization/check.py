@@ -11,9 +11,9 @@ import numpy as np
 
 
 HERE = Path(__file__).resolve().parent
-TESTS = HERE.parent
-DEFAULT_BINARY = HERE.parent.parent / "genetIC"
-TRANSFER = TESTS / "camb_transfer_kmax40_z0_post2015.dat"
+PACKAGE = HERE.parent.parent
+DEFAULT_BINARY = PACKAGE / "genetIC" / "genetIC"
+TRANSFER = PACKAGE / "genetIC" / "tests" / "camb_transfer_kmax40_z0_post2015.dat"
 
 # The CAMB table, h=0.701, n_s=0.96, and k_p=0.05 Mpc^-1 give
 # sigma_8=0.817 for this primordial amplitude at z=0.
@@ -34,15 +34,20 @@ def run_case(binary: Path, root: Path, name: str, normalization: str) -> np.ndar
 
     environment = os.environ.copy()
     environment["OMP_NUM_THREADS"] = "1"
-    subprocess.run(
+    result = subprocess.run(
         [str(binary), str(parameter_file)],
         cwd=root,
         env=environment,
-        check=True,
+        check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Normalization case {name} failed with return code "
+            f"{result.returncode}.\nOutput:\n{result.stdout}"
+        )
     return np.loadtxt(output / "normalization_0.ps")
 
 

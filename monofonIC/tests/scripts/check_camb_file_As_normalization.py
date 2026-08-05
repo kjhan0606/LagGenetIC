@@ -18,14 +18,19 @@ PIVOT = 0.05
 
 
 def generate(executable: Path, config: Path, output: Path, cwd: Path) -> np.ndarray:
-    subprocess.run(
+    result = subprocess.run(
         [str(executable), "--generate", "CAMB_file", str(config), str(output)],
         cwd=cwd,
-        check=True,
+        check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Transfer generation for {config.name} failed with return code "
+            f"{result.returncode}.\nOutput:\n{result.stdout}"
+        )
     return np.loadtxt(output)
 
 

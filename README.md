@@ -22,6 +22,44 @@ IC-generation codes used by the VoidSim project:
 Each subdirectory has its own build system and documentation; see the
 README inside each for build/usage instructions.
 
+## Power-spectrum normalisation
+
+The bundled monofonIC and GenetIC can normalise a tabulated CAMB transfer
+function with either the late-time amplitude `sigma_8` or the primordial
+amplitude `A_s`. Explicit `A_s` and `sigma_8` values are mutually exclusive.
+The pivot `k_p` is given in physical Mpc^-1.
+
+For monofonIC, select the primordial-amplitude path in the cosmology section:
+
+```ini
+[cosmology]
+A_s = 2.1005e-9
+k_p = 0.05
+transfer = CAMB_file
+transfer_file = camb_transfer.dat
+```
+
+Use `sigma_8 = ...` instead of `A_s` for numerical late-time normalisation.
+A named `ParameterSet` supplies its tabulated `A_s` unless the configuration
+explicitly overrides the normalisation.
+
+For GenetIC, set exactly one amplitude before the `camb` command:
+
+```text
+A_s 2.1005e-9
+k_p 0.05
+camb camb_transfer.dat
+```
+
+The aliases `As` and `kpivot` are also accepted. The `A_s` path uses the
+redshift already represented by the imported CAMB table, so the table must
+correspond to the redshift required by the IC workflow. The legacy syntax
+uses `s8 <value>` in place of `A_s`.
+
+Focused regression tests live in
+`genetIC/tests/test_As_normalization/` and in the monofonIC CTest target
+`test_transfer_CAMB_file_As_normalization`.
+
 ## VoidSim full-stack validation
 
 `examples/v1_id_roundtrip/` contains the reproducible 128^3 V1 regression for
