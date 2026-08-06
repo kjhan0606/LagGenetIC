@@ -17,7 +17,7 @@ outformat grafic
 base_grid 512.0 512
 id_file target1.id
 # A 128-cell fine grid spans 64 Mpc/h at the effective 1024^3 resolution.
-zoom_grid 2 128
+zoom_grid 8 128
 centre_output
 import_level_as 0 wn_level0.npy whitenoise
 reverse

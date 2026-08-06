@@ -14,6 +14,9 @@ from verify_target1_zoom import (
 )
 
 
+HERE = Path(__file__).resolve().parent
+
+
 def write_records(path: Path, records: list[bytes]) -> None:
     with path.open("wb") as handle:
         for payload in records:
@@ -81,3 +84,26 @@ def test_read_part_ids_finds_64_bit_identity_record(tmp_path: Path) -> None:
     records.append(ids.tobytes())
     write_records(path, records)
     np.testing.assert_array_equal(read_part_ids(path), ids)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ("genetic_target1_zoom_normal.txt", "genetic_target1_zoom_inverted.txt"),
+)
+def test_zoom_geometry_is_64_mpc_at_effective_1024(filename: str) -> None:
+    lines = [
+        line.split()
+        for line in (HERE / filename).read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    base = next(tokens for tokens in lines if tokens[0] == "base_grid")
+    zoom = next(tokens for tokens in lines if tokens[0] == "zoom_grid")
+    box_size = float(base[1])
+    base_cells = int(base[2])
+    subbox_factor = int(zoom[1])
+    fine_cells = int(zoom[2])
+    fine_box_size = box_size / subbox_factor
+    fine_cell_size = fine_box_size / fine_cells
+    assert fine_box_size == 64.0
+    assert fine_cell_size == 0.5
+    assert box_size / fine_cell_size == 2 * base_cells
