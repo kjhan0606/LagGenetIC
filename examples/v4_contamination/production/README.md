@@ -70,6 +70,21 @@ all `512^3` cells and requires bit-identical Cartesian particle IDs.  The
 inverted z=0 parent supplies the Eulerian void centers, radii, and density
 profiles needed before any high-resolution hydrodynamic run is staged.
 
+The first post-processing pass tracks the selected particle IDs into the
+inverted final snapshot, locates a local minimum in a 4 Mpc/h Gaussian-smoothed
+`256^3` density field, and measures spherical shell and enclosed-density
+profiles:
+
+```bash
+python3 measure_inverted_voids.py \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/evolution/output_00006 \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0/parent_targets \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/void_analysis
+```
+
+The reported outermost radius with enclosed `delta <= -0.8` is explicitly a
+pre-watershed diagnostic, not the final catalogue effective radius.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
