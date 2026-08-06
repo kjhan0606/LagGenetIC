@@ -58,6 +58,18 @@ recentring shift prevents an arbitrary parent-box origin from biasing the
 sample.  The selector writes the three GenetIC `id_file` masks and
 machine-readable JSON/TSV diagnostics under `dmo_z0/parent_targets`.
 
+The next matched control globally reverses the same imported white noise and
+evolves a second fixed level-9 parent on LagEunha:
+
+```bash
+./run_inverted_parent_lageunha.sh
+```
+
+Before evolution, the runner checks `delta_inverted=-delta_normal` exactly in
+all `512^3` cells and requires bit-identical Cartesian particle IDs.  The
+inverted z=0 parent supplies the Eulerian void centers, radii, and density
+profiles needed before any high-resolution hydrodynamic run is staged.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
