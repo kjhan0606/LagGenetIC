@@ -10,12 +10,15 @@
 #SBATCH --output=dmo-%j.out
 #SBATCH --error=dmo-%j.err
 
-set -euo pipefail
+set -eo pipefail
 
 RUNDIR=/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0
 EXPECTED_BINARY_SHA256=ce3e5a14c22639fd14e3c70092694eeb2b6fb3a009aefafdd7e20fbf585a592e
 
-source /opt/ohpc/pub/intel/oneapi-2025.03/setvars.sh >/dev/null 2>&1
+# Intel's environment scripts read optional variables before assigning them.
+# Enable nounset only after the vendor environment has been initialized.
+source /opt/ohpc/pub/intel/oneapi-2025.03/setvars.sh
+set -u
 export I_MPI_PMI_LIBRARY=/usr/lib64/libpmi2.so
 export I_MPI_PIN=1
 export OMP_NUM_THREADS=1

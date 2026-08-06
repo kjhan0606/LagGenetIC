@@ -27,10 +27,14 @@ def info_value(text: str, key: str) -> float:
     return float(match.group(1).replace("D", "E"))
 
 
-def check_outputs(run_dir: Path, expected_ranks: int) -> Path:
+def check_outputs(
+    run_dir: Path, expected_ranks: int, expected_outputs: int = 6
+) -> Path:
     outputs = sorted(path for path in run_dir.glob("output_[0-9]*") if path.is_dir())
-    if len(outputs) != 5:
-        raise AssertionError(f"{run_dir}: expected 5 snapshots, found {len(outputs)}")
+    if len(outputs) != expected_outputs:
+        raise AssertionError(
+            f"{run_dir}: expected {expected_outputs} snapshots, found {len(outputs)}"
+        )
 
     scale_factors: list[float] = []
     for output in outputs:
@@ -46,6 +50,10 @@ def check_outputs(run_dir: Path, expected_ranks: int) -> Path:
 
     if np.any(np.diff(scale_factors) <= 0.0):
         raise AssertionError(f"snapshot scale factors are not increasing: {scale_factors}")
+    if not 0.0199 <= scale_factors[0] <= 0.0201:
+        raise AssertionError(
+            f"initial snapshot scale factor is {scale_factors[0]}, expected a=0.02"
+        )
     if not 0.999 <= scale_factors[-1] <= 1.02:
         raise AssertionError(f"final scale factor is {scale_factors[-1]}, expected a=1")
     print("  snapshots: " + ", ".join(f"a={value:.6f}" for value in scale_factors))
@@ -86,6 +94,7 @@ def main() -> int:
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--grid-size", type=int, default=512)
     parser.add_argument("--ranks", type=int, default=64)
+    parser.add_argument("--outputs", type=int, default=6)
     args = parser.parse_args()
     run_dir = args.run_dir.resolve()
 
@@ -94,7 +103,7 @@ def main() -> int:
         raise AssertionError(f"{run_dir / 'ramses.log'}: completion marker is absent")
 
     print("== VoidSim V4 z=0 DMO verification ==")
-    final_output = check_outputs(run_dir, args.ranks)
+    final_output = check_outputs(run_dir, args.ranks, args.outputs)
     check_ids(final_output, args.grid_size, args.ranks)
     print("V4 Z=0 DMO PARENT PASSED")
     return 0

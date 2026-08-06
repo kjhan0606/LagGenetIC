@@ -20,8 +20,9 @@ The sequence is:
    `A_s` branch reported by both IC codes.
 7. the production DMO run evolves that validated fixed level-9 parent from
    `a=0.02` to `a=1` on one Grammar node with 64 MPI ranks.  It uses the FFTW3
-   base-grid Poisson solver, writes five snapshots, and verifies the final
-   particle-ID permutation before declaring success.
+   base-grid Poisson solver and writes the initial state followed by five
+   scheduled snapshots.  The final gate verifies the complete particle-ID
+   permutation before declaring success.
 
 Run all stages, or one named resumable stage, with:
 
@@ -43,8 +44,10 @@ After the level-9 gate passes, stage and submit the production evolution with:
 
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
-an existing run, rejects a changed lagRamses executable, and records the exact
-binary checksum and source revisions in `provenance.txt`.
+simulation output and records the exact binary checksum, its build revision,
+and the current source revisions in `provenance.txt`.  An environment-only
+retry reuses the validated staged executable even if the developer worktree
+has since rebuilt its default binary.
 
 Successful stages leave `.STAGE.complete` markers in the GPFS work root.  Set
 `V4_WORKROOT` only to choose another dedicated GPFS directory; the runner
