@@ -113,5 +113,7 @@ def test_zoom_geometry_is_64_mpc_at_effective_1024(filename: str) -> None:
 def test_ingestion_grid_capacity_covers_sixteen_rank_base_mesh() -> None:
     namelist = (HERE / "ramses_target1_zoom_ingest.nml").read_text()
     ngridmax = int(re.search(r"^ngridmax=(\d+)$", namelist, re.MULTILINE).group(1))
+    m_refine = float(re.search(r"^m_refine=([0-9.]+)$", namelist, re.MULTILINE).group(1))
     base_octs_per_rank = 512**3 / 8 / 16
     assert 0.85 * ngridmax > 1.25 * base_octs_per_rank
+    assert m_refine == 8.0

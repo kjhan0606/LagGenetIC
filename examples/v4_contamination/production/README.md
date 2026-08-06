@@ -101,6 +101,9 @@ This is a format, mask, and particle-ID regression only.  It is not a
 production zoom evolution and does not set the final nested hierarchy.
 Because `nexpand=1`, lagRamses is expected to add a one-oct boundary layer;
 the level-10 grid count can therefore exceed the exact target refmap count.
+The one-step check retains the standard `m_refine=8` particle criterion;
+setting this threshold to zero would request whole-box level-10 refinement
+after the first step and is not a valid way to disable dynamic refinement.
 
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
