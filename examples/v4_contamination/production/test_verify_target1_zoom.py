@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import struct
 
 import numpy as np
@@ -107,3 +108,10 @@ def test_zoom_geometry_is_64_mpc_at_effective_1024(filename: str) -> None:
     assert fine_box_size == 64.0
     assert fine_cell_size == 0.5
     assert box_size / fine_cell_size == 2 * base_cells
+
+
+def test_ingestion_grid_capacity_covers_sixteen_rank_base_mesh() -> None:
+    namelist = (HERE / "ramses_target1_zoom_ingest.nml").read_text()
+    ngridmax = int(re.search(r"^ngridmax=(\d+)$", namelist, re.MULTILINE).group(1))
+    base_octs_per_rank = 512**3 / 8 / 16
+    assert 0.85 * ngridmax > 1.25 * base_octs_per_rank
