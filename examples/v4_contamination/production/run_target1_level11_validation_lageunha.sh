@@ -77,17 +77,19 @@ ulimit -s unlimited
 
 echo "[1/4] generate the matched normal and inverted level-11 ICs"
 for mode in normal inverted; do
-    (cd "$RUNDIR/$mode" && \
-        /usr/bin/time -v -o genetic.time \
-        taskset -c 16-31 env OMP_NUM_THREADS=16 \
-        "$GENETIC_BIN" genetic.txt > genetic.log 2>&1)
+    (cd "$RUNDIR/$mode" && {
+        TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+        time taskset -c 16-31 env OMP_NUM_THREADS=16 \
+            "$GENETIC_BIN" genetic.txt > genetic.log 2>&1
+    } 2> genetic.time)
 done
 
 echo "[2/4] verify the multilevel sign pair and target-1 mask"
-/usr/bin/time -v -o "$RUNDIR/verify_ic.time" \
-    python3 "$RUNDIR/verify_target1_zoom.py" \
-    "$RUNDIR/normal" "$RUNDIR/inverted" "$RUNDIR/target1.id" \
-    | tee "$RUNDIR/verify_ic.log"
+{
+    TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    time python3 "$RUNDIR/verify_target1_zoom.py" \
+        "$RUNDIR/normal" "$RUNDIR/inverted" "$RUNDIR/target1.id"
+} 2> "$RUNDIR/verify_ic.time" | tee "$RUNDIR/verify_ic.log"
 
 echo "[3/4] ingest three GRAFIC levels with lagRamses on 16 MPI ranks"
 export OMP_NUM_THREADS=1
@@ -95,16 +97,18 @@ export I_MPI_PIN=1
 export I_MPI_PIN_DOMAIN=core
 export I_MPI_PIN_PROCESSOR_LIST=16-31
 export I_MPI_FABRICS=shm
-(cd "$RUNDIR/ramses" && \
-    /usr/bin/time -v -o ramses.time \
-    mpirun -np 16 ./ramses_final3d ramses.nml > ramses.log 2>&1)
+(cd "$RUNDIR/ramses" && {
+    TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    time mpirun -np 16 ./ramses_final3d ramses.nml > ramses.log 2>&1
+} 2> ramses.time)
 
 echo "[4/4] verify every refined mesh and globally unique particle IDs"
-/usr/bin/time -v -o "$RUNDIR/verify_zoom.time" \
-    python3 "$RUNDIR/verify_target1_zoom.py" \
-    "$RUNDIR/normal" "$RUNDIR/inverted" "$RUNDIR/target1.id" \
-    --ramses-case "$RUNDIR/ramses" --ranks 16 \
-    | tee "$RUNDIR/verify_zoom.log"
+{
+    TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    time python3 "$RUNDIR/verify_target1_zoom.py" \
+        "$RUNDIR/normal" "$RUNDIR/inverted" "$RUNDIR/target1.id" \
+        --ramses-case "$RUNDIR/ramses" --ranks 16
+} 2> "$RUNDIR/verify_zoom.time" | tee "$RUNDIR/verify_zoom.log"
 {
     echo "completed_at=$(date --iso-8601=seconds)"
     du -sb "$RUNDIR"

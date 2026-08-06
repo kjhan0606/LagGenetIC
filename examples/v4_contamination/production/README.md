@@ -108,8 +108,8 @@ after the first step and is not a valid way to disable dynamic refinement.
 The next scale gate preserves the same 64 Mpc/h patch while adding an
 effective `2048^3` level.  The second `zoom_grid 1 256` command is relative to
 the preceding 64 Mpc/h grid.  A factor of one is therefore required to retain
-the physical target volume.  The runner records wall time and peak memory for
-both GenetIC cases, the IC verifier, and the 16-rank RAMSES ingestion:
+the physical target volume.  The runner records wall and CPU time for both
+GenetIC cases, the IC verifier, and the 16-rank RAMSES ingestion:
 
 ```bash
 ssh lageunha \
