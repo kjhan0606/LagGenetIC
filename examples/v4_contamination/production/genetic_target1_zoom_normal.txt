@@ -1,0 +1,23 @@
+# VoidSim V4 target-1 one-level zoom hand-off regression.
+Om     0.3099
+Ol     0.6901
+A_s    2.1064e-9
+k_p    0.05
+ns     0.96822
+hubble 0.67742
+zin    49
+camb   camb_transfer_z49.dat
+
+random_seed_real_space 8896131
+
+outname   v4_target1_normal
+outdir    ./
+outformat grafic
+
+base_grid 512.0 512
+id_file target1.id
+# A 128-cell fine grid spans 64 Mpc/h at the effective 1024^3 resolution.
+zoom_grid 2 128
+centre_output
+import_level_as 0 wn_level0.npy whitenoise
+done

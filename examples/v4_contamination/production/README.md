@@ -85,6 +85,21 @@ python3 measure_inverted_voids.py \
 The reported outermost radius with enclosed `delta <= -0.8` is explicitly a
 pre-watershed diagnostic, not the final catalogue effective radius.
 
+After the inverted parent and preliminary profile gates pass, the target-1
+hand-off regression creates a matched normal/inverted two-level GRAFIC pair.
+The selected Lagrangian span is 48 Mpc/h, so a centered 128-cell fine grid
+spans 64 Mpc/h at effective `1024^3` resolution without allocating a full-box
+fine cube.  The launcher checks exact sign reversal on both levels and then
+uses 16 MPI ranks for a one-step lagRamses ingestion test:
+
+```bash
+ssh lageunha \
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_target1_zoom_validation_lageunha.sh
+```
+
+This is a format, mask, and particle-ID regression only.  It is not a
+production zoom evolution and does not set the final nested hierarchy.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
