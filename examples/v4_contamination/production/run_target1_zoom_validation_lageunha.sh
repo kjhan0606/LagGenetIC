@@ -92,7 +92,7 @@ ulimit -s unlimited
 
 echo "[1/4] generate the matched normal and inverted one-level zoom ICs"
 for mode in normal inverted; do
-    (cd "$RUNDIR/$mode" && taskset -c 0-15 env OMP_NUM_THREADS=16 \
+    (cd "$RUNDIR/$mode" && taskset -c 16-31 env OMP_NUM_THREADS=16 \
         "$GENETIC_BIN" genetic.txt > genetic.log 2>&1)
 done
 
@@ -105,7 +105,7 @@ echo "[3/4] ingest both GRAFIC levels with lagRamses on 16 MPI ranks"
 export OMP_NUM_THREADS=1
 export I_MPI_PIN=1
 export I_MPI_PIN_DOMAIN=core
-export I_MPI_PIN_PROCESSOR_LIST=0-15
+export I_MPI_PIN_PROCESSOR_LIST=16-31
 export I_MPI_FABRICS=shm
 (cd "$RUNDIR/ramses" && mpirun -np 16 ./ramses_final3d ramses.nml \
     > ramses.log 2>&1)
