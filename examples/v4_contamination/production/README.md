@@ -105,6 +105,24 @@ The one-step check retains the standard `m_refine=8` particle criterion;
 setting this threshold to zero would request whole-box level-10 refinement
 after the first step and is not a valid way to disable dynamic refinement.
 
+The next scale gate preserves the same 64 Mpc/h patch while adding an
+effective `2048^3` level.  The second `zoom_grid 1 256` command is relative to
+the preceding 64 Mpc/h grid.  A factor of one is therefore required to retain
+the physical target volume.  The runner records wall time and peak memory for
+both GenetIC cases, the IC verifier, and the 16-rank RAMSES ingestion:
+
+```bash
+ssh lageunha \
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_target1_level11_validation_lageunha.sh
+```
+
+This level-11 run is a measured resource and hierarchy gate.  It verifies all
+three GRAFIC levels, both AMR mesh counts, the expected hierarchical particle
+count, and global ID uniqueness.  It is not a final level-14 production IC.
+The full 64 Mpc/h hierarchy would require dense grids of 512 cells at level
+12, 1024 cells at level 13, and 2048 cells at level 14.  Those allocations are
+deferred until the target-resolution and patch-size trade-off is fixed.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,

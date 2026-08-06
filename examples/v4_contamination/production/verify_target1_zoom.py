@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the V4 target-1 sign pair and 16-rank lagRamses hand-off."""
+"""Verify the V4 target-1 sign pair and multilevel lagRamses hand-off."""
 
 from __future__ import annotations
 
@@ -32,6 +32,26 @@ def fortran_record_stream(path: Path) -> Iterator[bytes]:
 def grafic_shape(path: Path) -> tuple[int, int, int]:
     header = next(fortran_record_stream(path))
     return struct.unpack("<iii", header[:12])
+
+
+def files_equal(first: Path, second: Path, chunk_size: int = 8 * 1024**2) -> bool:
+    if first.stat().st_size != second.stat().st_size:
+        return False
+    with first.open("rb") as first_handle, second.open("rb") as second_handle:
+        while first_chunk := first_handle.read(chunk_size):
+            if first_chunk != second_handle.read(chunk_size):
+                return False
+        return second_handle.read(1) == b""
+
+
+def discover_effective_sizes(case: Path, prefix: str) -> list[int]:
+    sizes = []
+    pattern = re.compile(rf"{re.escape(prefix)}\.grafic_(\d+)$")
+    for directory in case.glob(f"{prefix}.grafic_*"):
+        match = pattern.fullmatch(directory.name)
+        if directory.is_dir() and match:
+            sizes.append(int(match.group(1)))
+    return sorted(sizes)
 
 
 def check_sign_file(normal: Path, inverted: Path) -> tuple[int, float]:
@@ -88,21 +108,41 @@ def check_ic_pair(
     inverted_case: Path,
     target_count: int,
     base_size: int,
-) -> tuple[int, float]:
+) -> tuple[int, float, list[int], list[int]]:
+    normal_prefix = "v4_target1_normal"
+    inverted_prefix = "v4_target1_inverted"
+    effective_sizes = discover_effective_sizes(normal_case, normal_prefix)
+    inverted_sizes = discover_effective_sizes(inverted_case, inverted_prefix)
+    if effective_sizes != inverted_sizes:
+        raise AssertionError(
+            "normal/inverted effective GRAFIC levels differ: "
+            f"{effective_sizes} != {inverted_sizes}"
+        )
+    if not effective_sizes or effective_sizes[0] != base_size:
+        raise AssertionError(
+            f"the GRAFIC hierarchy must begin at effective size {base_size}"
+        )
+    for coarse, fine in zip(effective_sizes, effective_sizes[1:]):
+        if fine != 2 * coarse:
+            raise AssertionError(
+                f"non-consecutive GRAFIC hierarchy: {coarse} -> {fine}"
+            )
+
     total_values = 0
-    for effective_size in (base_size, 2 * base_size):
-        normal_dir = normal_case / f"v4_target1_normal.grafic_{effective_size}"
-        inverted_dir = inverted_case / f"v4_target1_inverted.grafic_{effective_size}"
+    cube_cells = []
+    for effective_size in effective_sizes:
+        normal_dir = normal_case / f"{normal_prefix}.grafic_{effective_size}"
+        inverted_dir = inverted_case / f"{inverted_prefix}.grafic_{effective_size}"
         normal_density = normal_dir / "ic_deltab"
         inverted_density = inverted_dir / "ic_deltab"
-        if grafic_shape(normal_density) != grafic_shape(inverted_density):
+        normal_shape = grafic_shape(normal_density)
+        if normal_shape != grafic_shape(inverted_density):
             raise AssertionError(f"level {effective_size}: grid shapes differ")
+        cube_cells.append(int(np.prod(normal_shape, dtype=np.int64)))
         values, _ = check_sign_file(normal_density, inverted_density)
         total_values += values
         for filename in ("ic_particle_ids", "ic_refmap"):
-            if (normal_dir / filename).read_bytes() != (
-                inverted_dir / filename
-            ).read_bytes():
+            if not files_equal(normal_dir / filename, inverted_dir / filename):
                 raise AssertionError(
                     f"level {effective_size}: {filename} changed under reverse"
                 )
@@ -114,7 +154,7 @@ def check_ic_pair(
         )
     if target_mean <= 0.0:
         raise AssertionError(f"normal target mean delta is not positive: {target_mean}")
-    return total_values, target_mean
+    return total_values, target_mean, effective_sizes, cube_cells
 
 
 def read_part_ids(path: Path) -> np.ndarray:
@@ -143,32 +183,48 @@ def check_ramses(
     ramses_case: Path,
     target_count: int,
     base_size: int,
-    fine_cube_cells: int,
+    fine_cube_cells: list[int],
     ranks: int,
-) -> tuple[int, int]:
+) -> tuple[dict[int, int], int]:
     log = (ramses_case / "ramses.log").read_text()
-    matches = re.findall(r"Level\s+10 has\s+(\d+) grids", log)
-    if not matches:
-        raise AssertionError("lagRamses did not report a level-10 mesh")
-    fine_grids = int(matches[0])
-    if fine_grids < target_count:
-        raise AssertionError(
-            f"lagRamses loaded {fine_grids} level-10 grids, fewer than the "
-            f"{target_count} selected cells"
-        )
-    if fine_grids > fine_cube_cells:
-        raise AssertionError(
-            f"lagRamses loaded {fine_grids} level-10 grids, exceeding the "
-            f"{fine_cube_cells}-cell fine patch"
-        )
+    reported_grids: dict[int, int] = {}
+    for level_text, grids_text in re.findall(
+        r"Level\s+(\d+) has\s+(\d+) grids", log
+    ):
+        reported_grids.setdefault(int(level_text), int(grids_text))
+    base_level = base_size.bit_length() - 1
+    if 2**base_level != base_size:
+        raise ValueError("base size must be a power of two")
+    expected_levels = list(
+        range(base_level + 1, base_level + 1 + len(fine_cube_cells))
+    )
+    grid_counts = {}
+    for offset, (level, capacity) in enumerate(
+        zip(expected_levels, fine_cube_cells, strict=True)
+    ):
+        if level not in reported_grids:
+            raise AssertionError(f"lagRamses did not report a level-{level} mesh")
+        grids = reported_grids[level]
+        minimum = target_count * 8**offset
+        if grids < minimum:
+            raise AssertionError(
+                f"lagRamses loaded {grids} level-{level} grids, fewer than the "
+                f"{minimum} cells implied by the selected target"
+            )
+        if grids > capacity:
+            raise AssertionError(
+                f"lagRamses loaded {grids} level-{level} grids, exceeding the "
+                f"{capacity}-cell level patch"
+            )
+        grid_counts[level] = grids
     outputs = sorted(ramses_case.glob("output_[0-9][0-9][0-9][0-9][0-9]"))
     if not outputs:
         raise FileNotFoundError("lagRamses did not write an initial snapshot")
     part_files = sorted(outputs[0].glob("part_*.out*"))
     if len(part_files) != ranks:
         raise AssertionError(f"RAMSES wrote {len(part_files)} files, expected {ranks}")
-    expected_particles = base_size**3 + 7 * fine_grids
-    id_capacity = base_size**3 + fine_cube_cells
+    expected_particles = base_size**3 + 7 * sum(grid_counts.values())
+    id_capacity = base_size**3 + sum(fine_cube_cells)
     seen = np.zeros(id_capacity, dtype=np.bool_)
     particle_count = 0
     fine_particles = 0
@@ -189,13 +245,17 @@ def check_ramses(
         raise AssertionError(
             f"RAMSES wrote {particle_count} particles, expected {expected_particles}"
         )
-    expected_fine_particles = 8 * fine_grids
+    first_level = expected_levels[0]
+    expected_fine_particles = 8 * grid_counts[first_level]
+    expected_fine_particles += 7 * sum(
+        grid_counts[level] for level in expected_levels[1:]
+    )
     if fine_particles != expected_fine_particles:
         raise AssertionError(
             f"RAMSES wrote {fine_particles} fine particles, "
             f"expected {expected_fine_particles}"
         )
-    return fine_grids, particle_count
+    return grid_counts, particle_count
 
 
 def main() -> int:
@@ -211,34 +271,33 @@ def main() -> int:
     target_ids = np.loadtxt(args.target_id_file, dtype=np.int64, ndmin=1)
     if target_ids.size == 0 or np.any(np.diff(target_ids) <= 0):
         raise ValueError("target ID file must be non-empty and strictly increasing")
-    values, target_mean = check_ic_pair(
+    values, target_mean, effective_sizes, cube_cells = check_ic_pair(
         args.normal_case,
         args.inverted_case,
         target_ids.size,
         args.base_size,
     )
-    fine_shape = grafic_shape(
-        args.inverted_case
-        / f"v4_target1_inverted.grafic_{2 * args.base_size}"
-        / "ic_particle_ids"
-    )
     print(
         f"IC pair: exact sign reversal over {values} cells; "
-        f"target mean delta={target_mean:.12e}"
+        f"target mean delta={target_mean:.12e}; "
+        f"effective sizes={','.join(map(str, effective_sizes))}"
     )
     if args.ramses_case is not None:
-        fine_grids, particles = check_ramses(
+        grid_counts, particles = check_ramses(
             args.ramses_case,
             target_ids.size,
             args.base_size,
-            int(np.prod(fine_shape)),
+            cube_cells[1:],
             args.ranks,
         )
+        mesh_summary = ", ".join(
+            f"level-{level}={count}" for level, count in grid_counts.items()
+        )
         print(
-            f"lagRamses: {fine_grids} level-10 grids, "
+            f"lagRamses: {mesh_summary}; "
             f"{particles} particles over {args.ranks} ranks"
         )
-    print("V4 TARGET-1 ONE-LEVEL ZOOM PASSED")
+    print("V4 TARGET-1 MULTILEVEL ZOOM PASSED")
     return 0
 
 
