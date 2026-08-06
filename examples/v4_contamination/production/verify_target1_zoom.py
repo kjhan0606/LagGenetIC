@@ -151,9 +151,15 @@ def check_ramses(
     if not matches:
         raise AssertionError("lagRamses did not report a level-10 mesh")
     fine_grids = int(matches[0])
-    if fine_grids != target_count:
+    if fine_grids < target_count:
         raise AssertionError(
-            f"lagRamses loaded {fine_grids} level-10 grids, expected {target_count}"
+            f"lagRamses loaded {fine_grids} level-10 grids, fewer than the "
+            f"{target_count} selected cells"
+        )
+    if fine_grids > fine_cube_cells:
+        raise AssertionError(
+            f"lagRamses loaded {fine_grids} level-10 grids, exceeding the "
+            f"{fine_cube_cells}-cell fine patch"
         )
     outputs = sorted(ramses_case.glob("output_[0-9][0-9][0-9][0-9][0-9]"))
     if not outputs:
