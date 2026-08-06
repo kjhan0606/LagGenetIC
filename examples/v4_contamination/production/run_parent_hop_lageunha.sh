@@ -50,7 +50,10 @@ final_number=${FINAL_OUTPUT##*_}
     echo "started_at=$(date --iso-8601=seconds)"
     echo "host=$(hostname)"
     echo "final_output=$FINAL_OUTPUT"
+    echo "lagramses_head=$(git -C /home/kjhan/BACKUP/lagRamses rev-parse HEAD)"
+    echo "laggenetic_head=$(git -C /home/kjhan/BACKUP/VoidSim/code/LagGenetIC rev-parse HEAD)"
     sha256sum "$HOP_BUILD/hop" "$HOP_BUILD/regroup" "$HOP_BUILD/poshalo"
+    sha256sum "$HERE/select_parent_targets.py"
 } > "$HOP_DIR/provenance.txt"
 
 "$HOP_BUILD/hop" \
