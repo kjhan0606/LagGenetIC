@@ -54,12 +54,15 @@ ulimit -s unlimited
     sha256sum "$HERE/run_inverted_parent_hop_lageunha.sh"
 } > "$HOP_DIR/provenance.txt"
 
-{
+(
     TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    cd "$FINAL_OUTPUT"
+    # The legacy HOP RAMSES reader uses an 80-byte path buffer.  A short
+    # relative input prefix avoids corrupting that buffer for this deep path.
     time "$HOP_BUILD/hop" \
-        -in "$FINAL_OUTPUT/part_00006.out" -p 1. -o "$HOP_ROOT" \
+        -in "part_00006.out" -p 1. -o "$HOP_ROOT" \
         > "$HOP_DIR/hop.log" 2>&1
-} 2> "$HOP_DIR/hop.time"
+) 2> "$HOP_DIR/hop.time"
 {
     TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
     time "$HOP_BUILD/regroup" \
