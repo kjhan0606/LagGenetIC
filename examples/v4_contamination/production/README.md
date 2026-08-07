@@ -194,8 +194,8 @@ The report reads the verified mesh counts and timings from the completed run.
 Levels above 11 in the figure are geometric fixed-patch projections and are
 not presented as completed simulations.
 
-The cost, watershed, and parent-halo checks select compact rank 729 for the
-first level-14 DMO hand-off.  Its 24 Mpc/h Lagrangian envelope fits inside a
+The cost, watershed, and parent-halo checks select compact rank 726 for the
+first level-14 DMO hand-off.  Its 23 Mpc/h Lagrangian envelope fits inside a
 32 Mpc/h target patch.  A 64 Mpc/h level-10 support grid supplies the AMR
 interpolation boundary before the hierarchy contracts to 32 Mpc/h at level
 11.  The runner writes five nested zoom grids through effective `16384^3`
@@ -204,7 +204,7 @@ mesh level and global particle ID:
 
 ```bash
 ssh lageunha \
-  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact729_level14_pilot_lageunha.sh
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact726_level14_pilot_lageunha.sh
 ```
 
 The hand-off contains 1,363,148,800 dense GRAFIC cells before masking.  The

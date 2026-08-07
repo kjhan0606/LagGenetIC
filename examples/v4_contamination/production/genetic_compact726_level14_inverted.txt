@@ -1,4 +1,4 @@
-# VoidSim V4 compact rank-729 inverted level-14 DMO pilot.
+# VoidSim V4 compact rank-726 inverted level-14 DMO pilot.
 Om     0.3099
 Ol     0.6901
 A_s    2.1064e-9
@@ -10,12 +10,12 @@ camb   camb_transfer_z49.dat
 
 random_seed_real_space 8896131
 
-outname   v4_compact729_inverted
+outname   v4_compact726_inverted
 outdir    ./
 outformat grafic
 
 base_grid 512.0 512
-id_file compact729.id
+id_file compact726.id
 # A 64 Mpc/h level-10 support grid contains the interpolation boundary.
 # The level-11 through level-14 grids retain the 32 Mpc/h target patch.
 zoom_grid 8 128

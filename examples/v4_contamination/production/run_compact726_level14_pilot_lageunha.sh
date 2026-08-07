@@ -4,9 +4,9 @@ set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 SOURCE_ROOT=$(git -C "$HERE" rev-parse --show-toplevel)
 V4_ROOT=${V4_WORKROOT:-/gpfs/kjhan/VoidSim/v4_parent_n512}
-RUNDIR="$V4_ROOT/compact729_level14_pilot"
+RUNDIR="$V4_ROOT/compact726_level14_pilot"
 CANDIDATE_ROOT="$V4_ROOT/dmo_z0/candidate_void_comparison"
-TARGET_ID="$CANDIDATE_ROOT/comparison_06_compact_rank_000729_halo_000729.id"
+TARGET_ID="$CANDIDATE_ROOT/comparison_04_compact_rank_000726_halo_000726.id"
 GENETIC_BIN=${GENETIC_BIN:-$SOURCE_ROOT/genetIC/genetIC/genetIC}
 RAMSES_SOURCE="$V4_ROOT/dmo_z0/ramses_final3d"
 CAMB_ROOT=${CAMB_ROOT:-/home/kjhan/BACKUP/lagCAMB_validation/lagCAMB}
@@ -37,8 +37,8 @@ if [ ! -f "$CAMB_ROOT/inifiles/planck_2018.ini" ]; then
     echo "CAMB Planck base ini is absent below $CAMB_ROOT" >&2
     exit 2
 fi
-if [ ! -s "$TARGET_ID" ] || [ "$(wc -l < "$TARGET_ID")" -ne 3490 ]; then
-    echo "rank-729 target file is absent or does not contain 3490 IDs" >&2
+if [ ! -s "$TARGET_ID" ] || [ "$(wc -l < "$TARGET_ID")" -ne 3493 ]; then
+    echo "rank-726 target file is absent or does not contain 3493 IDs" >&2
     exit 2
 fi
 actual_ramses_sha256=$(sha256sum "$RAMSES_SOURCE" | awk '{print $1}')
@@ -55,10 +55,10 @@ fi
 
 if [ ! -e "$RUNDIR" ]; then
     mkdir -p "$RUNDIR/camb" "$RUNDIR/genetic" "$RUNDIR/ramses"
-    install -m 0644 "$TARGET_ID" "$RUNDIR/compact729.id"
-    install -m 0644 "$HERE/genetic_compact729_level14_inverted.txt" \
+    install -m 0644 "$TARGET_ID" "$RUNDIR/compact726.id"
+    install -m 0644 "$HERE/genetic_compact726_level14_inverted.txt" \
         "$RUNDIR/genetic/genetic.txt"
-    install -m 0644 "$HERE/ramses_compact729_level14_pilot.nml" \
+    install -m 0644 "$HERE/ramses_compact726_level14_pilot.nml" \
         "$RUNDIR/ramses/ramses.nml"
     install -m 0644 "$CAMB_ROOT/inifiles/planck_2018.ini" \
         "$RUNDIR/camb/planck_2018_base.ini"
@@ -74,12 +74,12 @@ if [ ! -e "$RUNDIR" ]; then
     ln -s ../camb/camb_transfer_z49_level14.dat \
         "$RUNDIR/genetic/camb_transfer_z49.dat"
     ln -s "$V4_ROOT/genetic/wn_level0.npy" "$RUNDIR/genetic/wn_level0.npy"
-    ln -s ../compact729.id "$RUNDIR/genetic/compact729.id"
+    ln -s ../compact726.id "$RUNDIR/genetic/compact726.id"
     {
         echo "started_at=$(date --iso-8601=seconds)"
         echo "host=$(hostname)"
-        echo "target=compact_rank_729"
-        echo "target_parent_particles=3490"
+        echo "target=compact_rank_726"
+        echo "target_parent_particles=3493"
         echo "dense_grafic_cells=1363148800"
         echo "laggenetic_head=$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
         echo "ramses_binary_sha256=$actual_ramses_sha256"
@@ -88,7 +88,7 @@ if [ ! -e "$RUNDIR" ]; then
             "$RUNDIR/genetic/genetic.txt" "$RUNDIR/ramses/ramses.nml"
     } > "$RUNDIR/provenance.txt"
 elif [ -e "$RUNDIR/.complete" ]; then
-    echo "compact rank-729 level-14 pilot is already complete"
+    echo "compact rank-726 level-14 pilot is already complete"
     exit 0
 elif [ -e "$RUNDIR/.failed" ]; then
     mv "$RUNDIR/.failed" \
@@ -132,11 +132,11 @@ fi
 
 if [ ! -e "$RUNDIR/.genetic.complete" ]; then
     if find "$RUNDIR/genetic" -maxdepth 1 -type d \
-        -name 'v4_compact729_inverted.grafic_*' | grep -q .; then
+        -name 'v4_compact726_inverted.grafic_*' | grep -q .; then
         echo "partial compact GRAFIC output exists; refusing to overwrite it" >&2
         exit 2
     fi
-    echo "[2/5] generate the inverted compact rank-729 level-14 IC"
+    echo "[2/5] generate the inverted compact rank-726 level-14 IC"
     (
         TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
         cd "$RUNDIR/genetic"
@@ -147,11 +147,11 @@ if [ ! -e "$RUNDIR/.genetic.complete" ]; then
 fi
 
 if [ ! -e "$RUNDIR/.ic_verify.complete" ]; then
-    echo "[3/5] verify all six GRAFIC levels and the rank-729 mask"
+    echo "[3/5] verify all six GRAFIC levels and the rank-726 mask"
     (
         TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
         time python3 "$RUNDIR/verify_compact_level14.py" \
-            "$RUNDIR/genetic" "$RUNDIR/compact729.id"
+            "$RUNDIR/genetic" "$RUNDIR/compact726.id"
     ) 2> "$RUNDIR/verify_ic.time" | tee "$RUNDIR/verify_ic.log"
     touch "$RUNDIR/.ic_verify.complete"
 fi
@@ -180,7 +180,7 @@ echo "[5/5] verify the AMR hierarchy and global particle IDs"
 (
     TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
     time python3 "$RUNDIR/verify_compact_level14.py" \
-        "$RUNDIR/genetic" "$RUNDIR/compact729.id" \
+        "$RUNDIR/genetic" "$RUNDIR/compact726.id" \
         --ramses-case "$RUNDIR/ramses" --ranks 64
 ) 2> "$RUNDIR/verify_ramses.time" | tee "$RUNDIR/verify_ramses.log"
 {
@@ -189,4 +189,4 @@ echo "[5/5] verify the AMR hierarchy and global particle IDs"
 } >> "$RUNDIR/provenance.txt"
 touch "$RUNDIR/.complete"
 status=complete
-echo "V4 COMPACT RANK-729 LEVEL-14 DMO PILOT PASSED"
+echo "V4 COMPACT RANK-726 LEVEL-14 DMO PILOT PASSED"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the compact rank-729 level-14 GRAFIC and lagRamses hand-off."""
+"""Verify the compact rank-726 level-14 GRAFIC and lagRamses hand-off."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from verify_target1_zoom import (
 )
 
 
-PREFIX = "v4_compact729_inverted"
+PREFIX = "v4_compact726_inverted"
 EXPECTED_LEVELS = (
     (512, (512, 512, 512)),
     (1024, (128, 128, 128)),
@@ -109,13 +109,13 @@ def main() -> int:
     args = parser.parse_args()
 
     target_ids = np.loadtxt(args.target_id_file, dtype=np.int64, ndmin=1)
-    if target_ids.size != 3490 or np.any(np.diff(target_ids) <= 0):
-        raise ValueError("compact rank-729 ID file must contain 3490 ordered IDs")
+    if target_ids.size != 3493 or np.any(np.diff(target_ids) <= 0):
+        raise ValueError("compact rank-726 ID file must contain 3493 ordered IDs")
     cube_cells, total_cells, target_mean = check_grafic(
         args.genetic_case, target_ids.size
     )
     print(
-        f"compact rank 729: {total_cells} verified GRAFIC cells; "
+        f"compact rank 726: {total_cells} verified GRAFIC cells; "
         f"target mean delta={target_mean:.12e}"
     )
     if args.ramses_case is not None:
@@ -130,7 +130,7 @@ def main() -> int:
             f"level-{level}={count}" for level, count in grid_counts.items()
         )
         print(f"lagRamses: {mesh}; {particles} particles over {args.ranks} ranks")
-    print("V4 COMPACT RANK-729 LEVEL-14 DMO HAND-OFF PASSED")
+    print("V4 COMPACT RANK-726 LEVEL-14 DMO HAND-OFF PASSED")
     return 0
 
 

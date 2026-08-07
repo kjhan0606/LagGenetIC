@@ -8,7 +8,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def test_compact_level14_geometry_uses_a_32_mpc_patch() -> None:
-    path = HERE / "genetic_compact729_level14_inverted.txt"
+    path = HERE / "genetic_compact726_level14_inverted.txt"
     lines = [
         line.split()
         for line in path.read_text().splitlines()
@@ -39,7 +39,7 @@ def test_compact_level14_geometry_uses_a_32_mpc_patch() -> None:
 
 
 def test_compact_level14_ramses_capacity_and_inputs() -> None:
-    namelist = (HERE / "ramses_compact729_level14_pilot.nml").read_text()
+    namelist = (HERE / "ramses_compact726_level14_pilot.nml").read_text()
     initfiles = re.findall(r"^initfile\(\d+\)='([^']+)'$", namelist, re.MULTILINE)
     assert len(initfiles) == 6
     assert initfiles[-1].endswith("grafic_16384")
