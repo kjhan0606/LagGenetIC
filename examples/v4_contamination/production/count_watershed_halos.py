@@ -217,8 +217,9 @@ def main() -> int:
         "parent_grid": args.parent_grid,
         "parent_particle_mass_msun_h": parent_mass,
         "production_level": args.production_level,
-        "projected_production_particle_mass_msun_h": production_mass,
-        "projected_100_particle_halo_mass_msun_h": 100.0 * production_mass,
+        "projected_level14_dmo_particle_mass_msun_h": production_mass,
+        "projected_level14_dmo_100_particle_halo_mass_msun_h": 100.0
+        * production_mass,
         "assignment": "HOP halo centre inside the periodic grid-watershed component",
         "status": "parent-resolution halo-yield diagnostic",
     }
@@ -247,8 +248,8 @@ def main() -> int:
         f"{parent_mass:.6e} Msun/h"
     )
     print(
-        f"projected level-{args.production_level} particle mass={production_mass:.6e} "
-        "Msun/h"
+        f"projected level-{args.production_level} DMO particle mass="
+        f"{production_mass:.6e} Msun/h"
     )
     for tier in tiers:
         counts = ", ".join(
