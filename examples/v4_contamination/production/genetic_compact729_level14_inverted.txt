@@ -1,0 +1,28 @@
+# VoidSim V4 compact rank-729 inverted level-14 DMO pilot.
+Om     0.3099
+Ol     0.6901
+A_s    2.1064e-9
+k_p    0.05
+ns     0.96822
+hubble 0.67742
+zin    49
+camb   camb_transfer_z49.dat
+
+random_seed_real_space 8896131
+
+outname   v4_compact729_inverted
+outdir    ./
+outformat grafic
+
+base_grid 512.0 512
+id_file compact729.id
+# A 32 Mpc/h patch contains the 24 Mpc/h periodic Lagrangian envelope.
+zoom_grid 16 64
+zoom_grid 1 128
+zoom_grid 1 256
+zoom_grid 1 512
+zoom_grid 1 1024
+centre_output
+import_level_as 0 wn_level0.npy whitenoise
+reverse
+done

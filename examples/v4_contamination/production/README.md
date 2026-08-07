@@ -194,6 +194,22 @@ The report reads the verified mesh counts and timings from the completed run.
 Levels above 11 in the figure are geometric fixed-patch projections and are
 not presented as completed simulations.
 
+The cost, watershed, and parent-halo checks select compact rank 729 for the
+first level-14 DMO hand-off.  Its 24 Mpc/h Lagrangian envelope fits inside a
+32 Mpc/h patch.  The runner writes five nested zoom grids through effective
+`16384^3` resolution, ingests the hierarchy with 64 lagRamses ranks, and
+checks every mesh level and global particle ID:
+
+```bash
+ssh lageunha \
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact729_level14_pilot_lageunha.sh
+```
+
+The hand-off contains 1,361,313,792 dense GRAFIC cells before masking.  The
+run writes only an initial snapshot and one evolution step.  Completion of
+this gate does not constitute a zero-redshift DMO pilot or a measured dwarf
+halo yield.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
