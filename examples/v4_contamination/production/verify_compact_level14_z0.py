@@ -32,10 +32,16 @@ def info_value(text: str, key: str) -> float:
 
 
 def check_outputs(
-    run_dir: Path, expected_ranks: int, expected_outputs: int = 6
+    run_dir: Path,
+    expected_ranks: int,
+    expected_outputs: int = 6,
+    first_index: int = 2,
 ) -> tuple[Path, Path]:
     outputs = sorted(path for path in run_dir.glob("output_[0-9]*") if path.is_dir())
-    expected_names = [f"output_{index:05d}" for index in range(1, expected_outputs + 1)]
+    expected_names = [
+        f"output_{index:05d}"
+        for index in range(first_index, first_index + expected_outputs)
+    ]
     if [path.name for path in outputs] != expected_names:
         raise AssertionError(
             f"{run_dir}: expected snapshots {expected_names}, found "
@@ -70,14 +76,69 @@ def check_outputs(
 
     if np.any(np.diff(scale_factors) <= 0.0):
         raise AssertionError(f"snapshot scale factors are not increasing: {scale_factors}")
-    if not 0.0199 <= scale_factors[0] <= 0.0201:
+    if not 0.0220 <= scale_factors[0] <= 0.0223:
         raise AssertionError(
-            f"initial snapshot scale factor is {scale_factors[0]}, expected a=0.02"
+            f"restart snapshot scale factor is {scale_factors[0]}, "
+            "expected a=0.0221607"
         )
     if not 0.999 <= scale_factors[-1] <= 1.02:
         raise AssertionError(f"final scale factor is {scale_factors[-1]}, expected a=1")
     print("  snapshots: " + ", ".join(f"a={value:.6f}" for value in scale_factors))
     return outputs[0], outputs[-1]
+
+
+def check_restart_checkpoint(
+    handoff_run: Path,
+    expected_ranks: int,
+    id_capacity: int,
+    expected_particles: int,
+) -> None:
+    log = (handoff_run / "ramses.log").read_text(errors="replace")
+    if "Run completed" not in log:
+        raise AssertionError(f"{handoff_run / 'ramses.log'}: completion marker is absent")
+    if "Problem in check_tree" in log:
+        raise AssertionError(f"{handoff_run / 'ramses.log'}: particle-tree failure is present")
+
+    initial = handoff_run / "output_00001"
+    restart = handoff_run / "output_00002"
+    scale_factors: list[float] = []
+    coarse_steps: list[int] = []
+    for index, output in ((1, initial), (2, restart)):
+        if not (output / "COMPLETE").is_file():
+            raise AssertionError(f"{output}: COMPLETE marker is absent")
+        info_path = output / f"info_{index:05d}.txt"
+        info = info_path.read_text(errors="replace")
+        if int(round(info_value(info, "ncpu"))) != expected_ranks:
+            raise AssertionError(f"{info_path}: unexpected MPI rank count")
+        if (
+            int(round(info_value(info, "levelmin"))),
+            int(round(info_value(info, "levelmax"))),
+        ) != (9, 14):
+            raise AssertionError(f"{info_path}: expected the level-9 through 14 mesh")
+        if len(find_part_files(output)) != expected_ranks:
+            raise AssertionError(f"{output}: unexpected particle-file count")
+        scale_factors.append(info_value(info, "aexp"))
+        coarse_steps.append(int(round(info_value(info, "nstep_coarse"))))
+
+    if coarse_steps != [0, 1]:
+        raise AssertionError(f"handoff coarse-step sequence is {coarse_steps}, expected [0, 1]")
+    if not 0.0199 <= scale_factors[0] <= 0.0201:
+        raise AssertionError(f"pre-step handoff has a={scale_factors[0]}, expected 0.02")
+    if not 0.0220 <= scale_factors[1] <= 0.0223:
+        raise AssertionError(
+            f"post-step restart has a={scale_factors[1]}, expected 0.0221607"
+        )
+    check_id_conservation(
+        initial,
+        restart,
+        expected_ranks,
+        id_capacity,
+        expected_particles,
+    )
+    print(
+        f"  restart checkpoint: nstep_coarse=1, a={scale_factors[1]:.9f}, "
+        f"ranks={expected_ranks}"
+    )
 
 
 def _check_local_ids(ids: np.ndarray, path: Path, id_capacity: int) -> None:
@@ -183,8 +244,20 @@ def main() -> int:
     parser.add_argument("--outputs", type=int, default=6)
     parser.add_argument("--id-capacity", type=int, default=DEFAULT_ID_CAPACITY)
     parser.add_argument("--particles", type=int, default=DEFAULT_PARTICLES)
+    parser.add_argument("--handoff-checkpoint", action="store_true")
     args = parser.parse_args()
     run_dir = args.run_dir.resolve()
+
+    if args.handoff_checkpoint:
+        print("== VoidSim compact rank-726 restart-checkpoint verification ==")
+        check_restart_checkpoint(
+            run_dir,
+            args.ranks,
+            args.id_capacity,
+            args.particles,
+        )
+        print("V4 COMPACT RANK-726 LEVEL-14 RESTART CHECKPOINT PASSED")
+        return 0
 
     log = (run_dir / "ramses.log").read_text(errors="replace")
     if "Run completed" not in log:
@@ -193,7 +266,9 @@ def main() -> int:
         raise AssertionError(f"{run_dir / 'ramses.log'}: capacity failure is present")
 
     print("== VoidSim compact rank-726 level-14 z=0 DMO verification ==")
-    initial_output, final_output = check_outputs(run_dir, args.ranks, args.outputs)
+    initial_output, final_output = check_outputs(
+        run_dir, args.ranks, args.outputs, first_index=2
+    )
     check_id_conservation(
         initial_output,
         final_output,

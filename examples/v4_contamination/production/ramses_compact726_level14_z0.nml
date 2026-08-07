@@ -1,13 +1,13 @@
 ! VoidSim V4 compact rank-726 level-14 DMO evolution.  Restart the verified
-! a=0.02 hand-off and evolve to a=1.  The diffuse-gas void_refine floor is
-! intentionally not enabled in this collisionless halo-yield calculation.
+! post-step a=0.0221607 checkpoint and evolve to a=1.  The diffuse-gas
+! void_refine floor is intentionally not enabled in this collisionless run.
 
 &RUN_PARAMS
 cosmo=.true.
 pic=.true.
 poisson=.true.
 hydro=.false.
-nrestart=1
+nrestart=2
 nremap=10
 ncontrol=1
 nstepmax=100000
@@ -21,7 +21,7 @@ aout=0.10,0.25,0.50,0.75,1.00
 /
 
 ! This block is parsed even on restart.  Its fields are not used because the
-! complete AMR and particle state is read from output_00001.
+! complete AMR and particle state is read from output_00002.
 &INIT_PARAMS
 /
 

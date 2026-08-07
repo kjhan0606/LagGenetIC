@@ -231,23 +231,27 @@ python3 plot_compact_level14_handoff.py \
   /gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_pilot/analysis
 ```
 
-The verified `a=0.02` snapshot is the restart gate for the first compact
-level-14 zero-redshift DMO evolution.  Run it manually on LagEunha with 64 MPI
-ranks and one OpenMP thread per rank:
+The initial diagnostic snapshot is written before the first leapfrog step and
+must not be used as a restart.  The hand-off also writes a post-step checkpoint
+at `a=0.0221607` (`output_00002`, `nstep_coarse=1`).  The restart verifier
+requires exact equality of all 260,317,198 particle IDs between the pre-step
+and post-step snapshots.  After this gate passes, run the first compact
+level-14 zero-redshift DMO evolution manually on LagEunha with 64 MPI ranks and
+one OpenMP thread per rank:
 
 ```bash
 ssh lageunha \
   /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact726_level14_z0_lageunha.sh
 ```
 
-The runner links, rather than copies, the 35 GiB hand-off snapshot into a new
+The runner links, rather than copies, the 35 GiB post-step checkpoint into a new
 run directory at
 `/gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_z0`.  It writes five
 new snapshots at `a=0.10`, 0.25, 0.50, 0.75, and 1.00 and can resume from the
 latest complete output after a cleanly recorded failure.  The final gate
-requires all six snapshots, the level-9 through level-14 hierarchy, no star
-particles, and exact equality of the 260,317,198 initial and final particle-ID
-sets.
+requires the checkpoint plus five scheduled snapshots, the level-9 through
+level-14 hierarchy, no star particles, and exact equality of the 260,317,198
+initial and final particle-ID sets.
 
 This collisionless run deliberately leaves `void_refine` disabled.  Its first
 purpose is to measure the dwarf-halo yield and the drift of coarse particles

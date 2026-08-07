@@ -6,7 +6,7 @@ SOURCE_ROOT=$(git -C "$HERE" rev-parse --show-toplevel)
 V4_ROOT=${V4_WORKROOT:-/gpfs/kjhan/VoidSim/v4_parent_n512}
 HANDOFF="$V4_ROOT/compact726_level14_pilot"
 RUNDIR="$V4_ROOT/compact726_level14_z0"
-HANDOFF_OUTPUT="$HANDOFF/ramses/output_00001"
+HANDOFF_OUTPUT="$HANDOFF/ramses/output_00002"
 RAMSES_SOURCE="$HANDOFF/ramses/ramses_final3d"
 EXPECTED_RAMSES_SHA256=ce3e5a14c22639fd14e3c70092694eeb2b6fb3a009aefafdd7e20fbf585a592e
 
@@ -20,9 +20,15 @@ if [ ! -e "$HANDOFF/.complete" ] || \
     echo "the compact rank-726 level-14 hand-off gate has not passed" >&2
     exit 2
 fi
+if [ ! -e "$HANDOFF/.restart_checkpoint_verified" ] || \
+    ! grep -q "V4 COMPACT RANK-726 LEVEL-14 RESTART CHECKPOINT PASSED" \
+        "$HANDOFF/verify_restart_checkpoint.log"; then
+    echo "the post-step level-14 restart checkpoint has not been verified" >&2
+    exit 2
+fi
 for required in \
     "$HANDOFF_OUTPUT/COMPLETE" \
-    "$HANDOFF_OUTPUT/info_00001.txt" \
+    "$HANDOFF_OUTPUT/info_00002.txt" \
     "$RAMSES_SOURCE"; do
     if [ ! -e "$required" ]; then
         echo "required restart input is absent: $required" >&2
@@ -54,7 +60,7 @@ if [ ! -e "$RUNDIR" ]; then
     install -m 0644 "$SOURCE_ROOT/examples/v2_hop_id_file/hop_to_genetic_id.py" \
         "$RUNDIR/hop_to_genetic_id.py"
     install -m 0755 "$RAMSES_SOURCE" "$RUNDIR/ramses_final3d"
-    ln -s "$HANDOFF_OUTPUT" "$RUNDIR/output_00001"
+    ln -s "$HANDOFF_OUTPUT" "$RUNDIR/output_00002"
     {
         echo "started_at=$(date --iso-8601=seconds)"
         echo "host=$(hostname)"
@@ -74,9 +80,9 @@ elif [ -e "$RUNDIR/.complete" ]; then
     exit 0
 fi
 
-if [ ! -L "$RUNDIR/output_00001" ] || \
-    [ "$(readlink -f "$RUNDIR/output_00001")" != "$(readlink -f "$HANDOFF_OUTPUT")" ]; then
-    echo "output_00001 is not the verified hand-off snapshot" >&2
+if [ ! -L "$RUNDIR/output_00002" ] || \
+    [ "$(readlink -f "$RUNDIR/output_00002")" != "$(readlink -f "$HANDOFF_OUTPUT")" ]; then
+    echo "output_00002 is not the verified post-step checkpoint" >&2
     exit 2
 fi
 if [ -s "$RUNDIR/launcher.pid" ]; then
@@ -102,20 +108,20 @@ for output in "$RUNDIR"/output_[0-9][0-9][0-9][0-9][0-9]; do
         latest_restart=$index
     fi
 done
-if [ "$latest_restart" -lt 1 ] || [ "$latest_restart" -gt 6 ]; then
+if [ "$latest_restart" -lt 2 ] || [ "$latest_restart" -gt 7 ]; then
     echo "invalid latest restart output: $latest_restart" >&2
     exit 2
 fi
 
 if [ -e "$RUNDIR/.ramses.complete" ]; then
-    if [ "$latest_restart" -ne 6 ] || ! grep -q "Run completed" "$RUNDIR/ramses.log"; then
+    if [ "$latest_restart" -ne 7 ] || ! grep -q "Run completed" "$RUNDIR/ramses.log"; then
         echo "RAMSES completion marker is inconsistent with its output" >&2
         exit 2
     fi
 elif [ -e "$RUNDIR/.failed" ]; then
     retry_stamp=$(date +%Y%m%dT%H%M%S)
     resume_reason=recorded_runtime_failure
-    if [ "$latest_restart" -eq 1 ] && \
+    if [ "$latest_restart" -eq 2 ] && \
         grep -q "You need to set up namelist &INIT_PARAMS" \
             "$RUNDIR/ramses.log" 2>/dev/null; then
         mv "$RUNDIR/ramses.nml" \
@@ -177,7 +183,7 @@ if [ ! -e "$RUNDIR/.ramses.complete" ]; then
             > ramses.log 2>&1
     ) 2> "$RUNDIR/ramses.time"
     if ! grep -q "Run completed" "$RUNDIR/ramses.log" || \
-        [ ! -f "$RUNDIR/output_00006/COMPLETE" ]; then
+        [ ! -f "$RUNDIR/output_00007/COMPLETE" ]; then
         echo "RAMSES returned without a complete a=1 snapshot" >&2
         exit 2
     fi
