@@ -51,3 +51,11 @@ def test_compact_level14_ramses_capacity_and_inputs() -> None:
     assert npartmax == 6_000_000
     assert int(m_refine.group(1)) >= levelmax
     assert float(m_refine.group(2)) == 8.0
+
+
+def test_compact_level14_transfer_extends_beyond_the_grid_requirement() -> None:
+    ini = (HERE / "lagcamb_z49_level14.ini").read_text()
+    transfer_kmax = float(
+        re.search(r"^transfer_kmax\s*=\s*([0-9.]+)$", ini, re.MULTILINE).group(1)
+    )
+    assert transfer_kmax > 201.06192983

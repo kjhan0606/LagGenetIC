@@ -206,9 +206,11 @@ ssh lageunha \
 ```
 
 The hand-off contains 1,361,313,792 dense GRAFIC cells before masking.  The
-run writes only an initial snapshot and one evolution step.  Completion of
-this gate does not constitute a zero-redshift DMO pilot or a measured dwarf
-halo yield.
+level-14 runner first builds a separate lagCAMB table beyond 220 h/Mpc because
+the finest GenetIC grid reaches 201.062 h/Mpc.  The parent table that ends near
+102 h/Mpc must not be reused for this hierarchy.  The run writes only an
+initial snapshot and one evolution step.  Completion of this gate does not
+constitute a zero-redshift DMO pilot or a measured dwarf halo yield.
 
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace

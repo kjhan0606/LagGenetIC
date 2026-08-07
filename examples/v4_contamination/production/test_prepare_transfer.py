@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from prepare_transfer import convert
+from prepare_transfer import check_k_coverage, convert
 
 
 class PrepareTransferTests(unittest.TestCase):
@@ -40,6 +40,15 @@ class PrepareTransferTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "need at least 13"):
                 convert(source, destination)
             self.assertFalse(destination.exists())
+
+    def test_checks_the_requested_wave_number_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "transfer.dat"
+            rows = [" ".join([str(k)] + ["1"] * 12) for k in (0.1, 10.0, 250.0)]
+            path.write_text("\n".join(rows) + "\n")
+            self.assertEqual(check_k_coverage(path, 220.0), (0.1, 250.0))
+            with self.assertRaisesRegex(ValueError, "does not reach"):
+                check_k_coverage(path, 300.0)
 
 
 if __name__ == "__main__":
