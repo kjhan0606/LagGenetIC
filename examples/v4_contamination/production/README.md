@@ -231,6 +231,30 @@ python3 plot_compact_level14_handoff.py \
   /gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_pilot/analysis
 ```
 
+The verified `a=0.02` snapshot is the restart gate for the first compact
+level-14 zero-redshift DMO evolution.  Run it manually on LagEunha with 64 MPI
+ranks and one OpenMP thread per rank:
+
+```bash
+ssh lageunha \
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact726_level14_z0_lageunha.sh
+```
+
+The runner links, rather than copies, the 35 GiB hand-off snapshot into a new
+run directory at
+`/gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_z0`.  It writes five
+new snapshots at `a=0.10`, 0.25, 0.50, 0.75, and 1.00 and can resume from the
+latest complete output after a cleanly recorded failure.  The final gate
+requires all six snapshots, the level-9 through level-14 hierarchy, no star
+particles, and exact equality of the 260,317,198 initial and final particle-ID
+sets.
+
+This collisionless run deliberately leaves `void_refine` disabled.  Its first
+purpose is to measure the dwarf-halo yield and the drift of coarse particles
+under ordinary particle-count AMR.  The diffuse-gas refinement floor is a
+separate hydrodynamic production choice and should be enabled only after this
+DMO contamination gate is evaluated.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
