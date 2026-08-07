@@ -91,24 +91,34 @@ elif [ -e "$RUNDIR/.complete" ]; then
     echo "compact rank-726 level-14 pilot is already complete"
     exit 0
 elif [ -e "$RUNDIR/.failed" ]; then
-    if grep -q "Increase ngridmax" "$RUNDIR/ramses/ramses.log" 2>/dev/null &&
+    capacity_reason=
+    capacity_prefix=
+    if grep -q "Increase ngridmax" "$RUNDIR/ramses/ramses.log" 2>/dev/null; then
+        capacity_reason=ngridmax1200000_exhausted
+        capacity_prefix=ngridmax1200000
+    elif grep -q "Maximum number of particles incorrect" \
+        "$RUNDIR/ramses/ramses.log" 2>/dev/null; then
+        capacity_reason=npartmax12000000_exhausted
+        capacity_prefix=npartmax12000000
+    fi
+    if [ -n "$capacity_reason" ] &&
         ! find "$RUNDIR/ramses" -maxdepth 1 -type d \
             -name 'output_[0-9][0-9][0-9][0-9][0-9]' | grep -q .; then
         retry_stamp=$(date +%Y%m%dT%H%M%S)
         mv "$RUNDIR/ramses/ramses.log" \
-            "$RUNDIR/ramses/ramses.ngridmax1200000.failed.$retry_stamp.log"
+            "$RUNDIR/ramses/ramses.$capacity_prefix.failed.$retry_stamp.log"
         mv "$RUNDIR/ramses/ramses.time" \
-            "$RUNDIR/ramses/ramses.ngridmax1200000.failed.$retry_stamp.time"
+            "$RUNDIR/ramses/ramses.$capacity_prefix.failed.$retry_stamp.time"
         mv "$RUNDIR/ramses/ramses.nml" \
-            "$RUNDIR/ramses/ramses.ngridmax1200000.failed.$retry_stamp.nml"
+            "$RUNDIR/ramses/ramses.$capacity_prefix.failed.$retry_stamp.nml"
         install -m 0644 "$HERE/ramses_compact726_level14_pilot.nml" \
             "$RUNDIR/ramses/ramses.nml"
         {
             echo "ramses_resumed_at=$(date --iso-8601=seconds)"
-            echo "ramses_resume_reason=ngridmax1200000_exhausted"
+            echo "ramses_resume_reason=$capacity_reason"
             echo "ramses_resume_laggenetic_head=$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
             sha256sum "$RUNDIR/ramses/ramses.nml" \
-                "$RUNDIR/ramses/ramses.ngridmax1200000.failed.$retry_stamp.log"
+                "$RUNDIR/ramses/ramses.$capacity_prefix.failed.$retry_stamp.log"
         } >> "$RUNDIR/provenance.txt"
     fi
     mv "$RUNDIR/.failed" \

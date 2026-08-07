@@ -32,7 +32,7 @@ initfile(6)='../genetic/v4_compact726_inverted.grafic_16384'
 levelmin=9
 levelmax=14
 ngridmax=3000000
-npartmax=12000000
+npartmax=24000000
 nexpand=1
 boxlen=1.0
 /

@@ -216,10 +216,20 @@ constitute a zero-redshift DMO pilot or a measured dwarf halo yield.
 
 The first RAMSES ingestion measured 816,637 owned grids on the busiest rank
 after the level-13 remap and exhausted the original `ngridmax=1,200,000` while
-constructing the level-14 boundary.  The production namelist therefore uses
-`ngridmax=3,000,000` and `npartmax=12,000,000`.  A capacity-only retry archives
-the failed log, timing, and namelist and reuses the already verified GRAFIC
-hierarchy.
+constructing the level-14 boundary.  The next capacity probe reached 1,750,728
+owned grids but found that three ranks required more than 12,000,000 particle
+slots.  The production namelist therefore uses `ngridmax=3,000,000` and
+`npartmax=24,000,000`.  A capacity-only retry archives the failed log, timing,
+and namelist and reuses the already verified GRAFIC hierarchy.
+
+After the completion marker exists, write the measured hierarchy, timing
+report, and two-panel hand-off figure with:
+
+```bash
+python3 plot_compact_level14_handoff.py \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_pilot \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_pilot/analysis
+```
 
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
