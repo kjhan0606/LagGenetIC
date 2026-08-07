@@ -54,18 +54,24 @@ ulimit -s unlimited
     sha256sum "$HERE/run_inverted_parent_hop_lageunha.sh"
 } > "$HOP_DIR/provenance.txt"
 
-/usr/bin/time -v -o "$HOP_DIR/hop.time" \
-    "$HOP_BUILD/hop" \
-    -in "$FINAL_OUTPUT/part_00006.out" -p 1. -o "$HOP_ROOT" \
-    > "$HOP_DIR/hop.log" 2>&1
-/usr/bin/time -v -o "$HOP_DIR/regroup.time" \
-    "$HOP_BUILD/regroup" \
-    -root "$HOP_ROOT" -douter 80. -dsaddle 200. -dpeak 240. \
-    -f77 -o "$GROUP_ROOT" > "$HOP_DIR/regroup.log" 2>&1
-/usr/bin/time -v -o "$HOP_DIR/poshalo.time" \
-    "$HOP_BUILD/poshalo" \
-    -inp "$FINAL_OUTPUT" -pre "$GROUP_ROOT" \
-    > "$HOP_DIR/poshalo.log" 2>&1
+{
+    TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    time "$HOP_BUILD/hop" \
+        -in "$FINAL_OUTPUT/part_00006.out" -p 1. -o "$HOP_ROOT" \
+        > "$HOP_DIR/hop.log" 2>&1
+} 2> "$HOP_DIR/hop.time"
+{
+    TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    time "$HOP_BUILD/regroup" \
+        -root "$HOP_ROOT" -douter 80. -dsaddle 200. -dpeak 240. \
+        -f77 -o "$GROUP_ROOT" > "$HOP_DIR/regroup.log" 2>&1
+} 2> "$HOP_DIR/regroup.time"
+{
+    TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
+    time "$HOP_BUILD/poshalo" \
+        -inp "$FINAL_OUTPUT" -pre "$GROUP_ROOT" \
+        > "$HOP_DIR/poshalo.log" 2>&1
+} 2> "$HOP_DIR/poshalo.time"
 
 for output in "$GROUP_ROOT.tag" "$GROUP_ROOT.size" "$GROUP_ROOT.pos"; do
     if [ ! -s "$output" ]; then
