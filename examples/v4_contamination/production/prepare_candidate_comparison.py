@@ -50,7 +50,6 @@ def main() -> int:
     output_dir = args.output_dir.resolve()
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"{output_dir}: output directory is not empty")
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     catalogue_path = args.candidate_catalogue.resolve()
     catalogue = json.loads(catalogue_path.read_text())
@@ -77,6 +76,7 @@ def main() -> int:
         candidates,
         args.grid_size,
     )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     selected_entries = []
     occupied: set[int] = set()
