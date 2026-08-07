@@ -114,6 +114,17 @@ python3 measure_void_watershed.py \
 This grid calculation is a sample-design diagnostic.  Its output is not
 labelled as a particle-Voronoi ZOBOV catalogue.
 
+Repeat the calculation at the desired analysis resolutions and combine the
+results with:
+
+```bash
+python3 plot_watershed_convergence.py \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/watershed_convergence \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/watershed_grid128 \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/watershed_grid192 \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/watershed_grid256
+```
+
 After both the inverted HOP and watershed markers pass, assign halo centres
 to the watershed components and measure the parent-resolution halo yield:
 
