@@ -48,8 +48,8 @@ def test_compact_level14_ramses_capacity_and_inputs() -> None:
     npartmax = int(re.search(r"^npartmax=(\d+)$", namelist, re.MULTILINE).group(1))
     m_refine = re.search(r"^m_refine=(\d+)\*([0-9.]+)$", namelist, re.MULTILINE)
     assert levelmax == 14
-    assert ngridmax == 1_200_000
-    assert npartmax == 6_000_000
+    assert ngridmax == 3_000_000
+    assert npartmax == 12_000_000
     assert int(m_refine.group(1)) >= levelmax
     assert float(m_refine.group(2)) == 8.0
 

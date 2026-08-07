@@ -31,8 +31,8 @@ initfile(6)='../genetic/v4_compact726_inverted.grafic_16384'
 &AMR_PARAMS
 levelmin=9
 levelmax=14
-ngridmax=1200000
-npartmax=6000000
+ngridmax=3000000
+npartmax=12000000
 nexpand=1
 boxlen=1.0
 /

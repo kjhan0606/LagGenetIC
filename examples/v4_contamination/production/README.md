@@ -214,6 +214,13 @@ the finest GenetIC grid reaches 201.062 h/Mpc.  The parent table that ends near
 initial snapshot and one evolution step.  Completion of this gate does not
 constitute a zero-redshift DMO pilot or a measured dwarf halo yield.
 
+The first RAMSES ingestion measured 816,637 owned grids on the busiest rank
+after the level-13 remap and exhausted the original `ngridmax=1,200,000` while
+constructing the level-14 boundary.  The production namelist therefore uses
+`ngridmax=3,000,000` and `npartmax=12,000,000`.  A capacity-only retry archives
+the failed log, timing, and namelist and reuses the already verified GRAFIC
+hierarchy.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
