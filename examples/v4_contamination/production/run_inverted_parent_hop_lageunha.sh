@@ -8,6 +8,7 @@ HOP_BUILD="$ROOT/dmo_z0/hop_build"
 HOP_DIR="$ROOT/inverted_parent_z0/hop_catalog"
 HOP_ROOT="$HOP_DIR/inverted_hop"
 GROUP_ROOT="$HOP_DIR/inverted_groups"
+resume_density=${V4_HOP_RESUME_DENSITY:-no}
 
 if [ "$(hostname | tr '[:upper:]' '[:lower:]')" != "lageunha" ]; then
     echo "this launcher must run on LagEunha, not $(hostname)" >&2
@@ -28,9 +29,30 @@ for executable in "$HOP_BUILD/hop" "$HOP_BUILD/regroup" "$HOP_BUILD/poshalo"; do
         exit 2
     fi
 done
-if [ -e "$HOP_DIR" ]; then
-    echo "inverted HOP output already exists; refusing to overwrite it" >&2
+if [ "$resume_density" != no ] && [ "$resume_density" != yes ]; then
+    echo "V4_HOP_RESUME_DENSITY must be yes or no" >&2
     exit 2
+fi
+new_run=yes
+if [ -e "$HOP_DIR" ]; then
+    if [ "$resume_density" != yes ]; then
+        echo "inverted HOP output already exists; refusing to overwrite it" >&2
+        exit 2
+    fi
+    new_run=no
+    if [ ! -e "$HOP_DIR/.failed" ] || [ ! -s "$HOP_ROOT.den" ]; then
+        echo "density resume requires a failed run with a nonempty .den file" >&2
+        exit 2
+    fi
+    if [ -e "$HOP_ROOT.hop" ] || [ -e "$HOP_ROOT.gbound" ]; then
+        echo "density resume refuses to replace existing HOP group outputs" >&2
+        exit 2
+    fi
+    density_particles=$(od -An -td4 -N4 "$HOP_ROOT.den" | tr -d ' ')
+    if [ "$density_particles" != 134217728 ]; then
+        echo "density file declares $density_particles particles, expected 134217728" >&2
+        exit 2
+    fi
 fi
 
 mkdir -p "$HOP_DIR"
@@ -45,24 +67,51 @@ cleanup() {
 trap cleanup EXIT
 ulimit -s unlimited
 
-{
-    echo "started_at=$(date --iso-8601=seconds)"
-    echo "host=$(hostname)"
-    echo "final_output=$FINAL_OUTPUT"
-    echo "laggenetic_head=$(git -C "$HERE/../../.." rev-parse HEAD)"
-    sha256sum "$HOP_BUILD/hop" "$HOP_BUILD/regroup" "$HOP_BUILD/poshalo"
-    sha256sum "$HERE/run_inverted_parent_hop_lageunha.sh"
-} > "$HOP_DIR/provenance.txt"
+if [ "$new_run" = yes ]; then
+    {
+        echo "started_at=$(date --iso-8601=seconds)"
+        echo "host=$(hostname)"
+        echo "final_output=$FINAL_OUTPUT"
+        echo "laggenetic_head=$(git -C "$HERE/../../.." rev-parse HEAD)"
+        sha256sum "$HOP_BUILD/hop" "$HOP_BUILD/regroup" "$HOP_BUILD/poshalo"
+        sha256sum "$HERE/run_inverted_parent_hop_lageunha.sh"
+    } > "$HOP_DIR/provenance.txt"
+else
+    mv "$HOP_DIR/.failed" "$HOP_DIR/.failed_after_density_stage"
+    {
+        echo "resumed_at=$(date --iso-8601=seconds)"
+        echo "resume_laggenetic_head=$(git -C "$HERE/../../.." rev-parse HEAD)"
+        sha256sum "$HERE/run_inverted_parent_hop_lageunha.sh"
+    } >> "$HOP_DIR/provenance.txt"
+fi
 
+if [ -e "$HOP_DIR/snapshot" ] || [ -L "$HOP_DIR/snapshot" ]; then
+    if [ "$(readlink -f "$HOP_DIR/snapshot")" != "$FINAL_OUTPUT" ]; then
+        echo "snapshot link does not resolve to the inverted final output" >&2
+        exit 2
+    fi
+else
+    ln -s "$FINAL_OUTPUT" "$HOP_DIR/snapshot"
+fi
+
+hop_time="$HOP_DIR/hop.time"
+if [ "$resume_density" = yes ]; then
+    hop_time="$HOP_DIR/hop_resume.time"
+fi
 (
     TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
-    cd "$FINAL_OUTPUT"
-    # The legacy HOP RAMSES reader uses an 80-byte path buffer.  A short
-    # relative input prefix avoids corrupting that buffer for this deep path.
-    time "$HOP_BUILD/hop" \
-        -in "part_00006.out" -p 1. -o "$HOP_ROOT" \
-        > "$HOP_DIR/hop.log" 2>&1
-) 2> "$HOP_DIR/hop.time"
+    cd "$HOP_DIR"
+    # The legacy reader uses 80-byte input and output buffers.  Both names
+    # must remain short before the reader appends rank and product suffixes.
+    if [ "$resume_density" = yes ]; then
+        time "$HOP_BUILD/hop" -in "snapshot/part_00006.out" \
+            -den "inverted_hop.den" -p 1. -o "inverted_hop" \
+            > "$HOP_DIR/hop_resume.log" 2>&1
+    else
+        time "$HOP_BUILD/hop" -in "snapshot/part_00006.out" \
+            -p 1. -o "inverted_hop" > "$HOP_DIR/hop.log" 2>&1
+    fi
+) 2> "$hop_time"
 {
     TIMEFORMAT=$'real_seconds=%R\nuser_seconds=%U\nsystem_seconds=%S'
     time "$HOP_BUILD/regroup" \
