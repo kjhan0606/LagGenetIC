@@ -114,6 +114,21 @@ python3 measure_void_watershed.py \
 This grid calculation is a sample-design diagnostic.  Its output is not
 labelled as a particle-Voronoi ZOBOV catalogue.
 
+After both the inverted HOP and watershed markers pass, assign halo centres
+to the watershed components and measure the parent-resolution halo yield:
+
+```bash
+python3 count_watershed_halos.py \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/hop_catalog/inverted_groups.pos \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/watershed_grid256 \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/halo_yield_grid256
+```
+
+The count is a relative environment diagnostic because the level-9 parent
+cannot resolve dwarf haloes.  The report also gives the projected level-14
+particle mass and 100-particle halo mass without treating those mass limits
+as measured halo counts.
+
 After the inverted parent and preliminary profile gates pass, the target-1
 hand-off regression creates a matched normal/inverted two-level GRAFIC pair.
 The selected Lagrangian span is 48 Mpc/h, so a centered 128-cell fine grid
