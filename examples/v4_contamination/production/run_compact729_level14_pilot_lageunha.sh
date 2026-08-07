@@ -80,7 +80,7 @@ if [ ! -e "$RUNDIR" ]; then
         echo "host=$(hostname)"
         echo "target=compact_rank_729"
         echo "target_parent_particles=3490"
-        echo "dense_grafic_cells=1361313792"
+        echo "dense_grafic_cells=1363148800"
         echo "laggenetic_head=$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
         echo "ramses_binary_sha256=$actual_ramses_sha256"
         sha256sum "$GENETIC_BIN" "$TARGET_ID" \

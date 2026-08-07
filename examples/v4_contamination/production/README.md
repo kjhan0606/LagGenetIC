@@ -196,16 +196,18 @@ not presented as completed simulations.
 
 The cost, watershed, and parent-halo checks select compact rank 729 for the
 first level-14 DMO hand-off.  Its 24 Mpc/h Lagrangian envelope fits inside a
-32 Mpc/h patch.  The runner writes five nested zoom grids through effective
-`16384^3` resolution, ingests the hierarchy with 64 lagRamses ranks, and
-checks every mesh level and global particle ID:
+32 Mpc/h target patch.  A 64 Mpc/h level-10 support grid supplies the AMR
+interpolation boundary before the hierarchy contracts to 32 Mpc/h at level
+11.  The runner writes five nested zoom grids through effective `16384^3`
+resolution, ingests the hierarchy with 64 lagRamses ranks, and checks every
+mesh level and global particle ID:
 
 ```bash
 ssh lageunha \
   /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact729_level14_pilot_lageunha.sh
 ```
 
-The hand-off contains 1,361,313,792 dense GRAFIC cells before masking.  The
+The hand-off contains 1,363,148,800 dense GRAFIC cells before masking.  The
 level-14 runner first builds a separate lagCAMB table beyond 220 h/Mpc because
 the finest GenetIC grid reaches 201.062 h/Mpc.  The parent table that ends near
 102 h/Mpc must not be reused for this hierarchy.  The run writes only an

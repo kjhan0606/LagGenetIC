@@ -16,9 +16,10 @@ outformat grafic
 
 base_grid 512.0 512
 id_file compact729.id
-# A 32 Mpc/h patch contains the 24 Mpc/h periodic Lagrangian envelope.
-zoom_grid 16 64
-zoom_grid 1 128
+# A 64 Mpc/h level-10 support grid contains the interpolation boundary.
+# The level-11 through level-14 grids retain the 32 Mpc/h target patch.
+zoom_grid 8 128
+zoom_grid 2 128
 zoom_grid 1 256
 zoom_grid 1 512
 zoom_grid 1 1024
