@@ -126,6 +126,19 @@ The full 64 Mpc/h hierarchy would require dense grids of 512 cells at level
 12, 1024 cells at level 13, and 2048 cells at level 14.  Those allocations are
 deferred until the target-resolution and patch-size trade-off is fixed.
 
+After the completion marker exists, write the machine-readable scale report
+and the measured-versus-projected figure with:
+
+```bash
+python3 plot_target1_scale_validation.py \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/target1_level11_validation \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/target1_level11_validation/scale_analysis
+```
+
+The report reads the verified mesh counts and timings from the completed run.
+Levels above 11 in the figure are geometric fixed-patch projections and are
+not presented as completed simulations.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,
