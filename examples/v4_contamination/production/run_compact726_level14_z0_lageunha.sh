@@ -114,6 +114,20 @@ if [ -e "$RUNDIR/.ramses.complete" ]; then
     fi
 elif [ -e "$RUNDIR/.failed" ]; then
     retry_stamp=$(date +%Y%m%dT%H%M%S)
+    resume_reason=recorded_runtime_failure
+    if [ "$latest_restart" -eq 1 ] && \
+        grep -q "You need to set up namelist &INIT_PARAMS" \
+            "$RUNDIR/ramses.log" 2>/dev/null; then
+        mv "$RUNDIR/ramses.nml" \
+            "$RUNDIR/ramses.missing_init.failed.$retry_stamp.nml"
+        install -m 0644 "$HERE/ramses_compact726_level14_z0.nml" \
+            "$RUNDIR/ramses.nml"
+        resume_reason=missing_init_params_corrected
+    elif ! cmp -s "$HERE/ramses_compact726_level14_z0.nml" \
+        "$RUNDIR/ramses.nml"; then
+        echo "staged namelist differs from the source; refusing an untracked resume" >&2
+        exit 2
+    fi
     for artifact in ramses.log ramses.time; do
         if [ -e "$RUNDIR/$artifact" ]; then
             mv "$RUNDIR/$artifact" \
@@ -124,7 +138,9 @@ elif [ -e "$RUNDIR/.failed" ]; then
     {
         echo "resumed_at=$(date --iso-8601=seconds)"
         echo "restart_index=$latest_restart"
+        echo "resume_reason=$resume_reason"
         echo "resume_laggenetic_head=$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
+        sha256sum "$RUNDIR/ramses.nml"
     } >> "$RUNDIR/provenance.txt"
 elif [ -e "$RUNDIR/ramses.log" ]; then
     echo "RAMSES log exists without a completion or failure marker" >&2

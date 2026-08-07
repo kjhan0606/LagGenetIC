@@ -20,6 +20,11 @@ noutput=5
 aout=0.10,0.25,0.50,0.75,1.00
 /
 
+! This block is parsed even on restart.  Its fields are not used because the
+! complete AMR and particle state is read from output_00001.
+&INIT_PARAMS
+/
+
 &AMR_PARAMS
 levelmin=9
 levelmax=14

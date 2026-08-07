@@ -55,6 +55,7 @@ def test_z0_namelist_restarts_verified_hierarchy() -> None:
     assert re.search(
         r"^aout=0\.10,0\.25,0\.50,0\.75,1\.00$", namelist, re.MULTILINE
     )
+    assert re.search(r"^&INIT_PARAMS\n/$", namelist, re.MULTILINE)
     assert re.search(r"^levelmin=9$", namelist, re.MULTILINE)
     assert re.search(r"^levelmax=14$", namelist, re.MULTILINE)
     assert re.search(r"^m_refine=15\*8\.0$", namelist, re.MULTILINE)
