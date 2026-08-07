@@ -139,10 +139,13 @@ def test_zoom_geometry_is_64_mpc_at_effective_1024(filename: str) -> None:
 def test_ingestion_grid_capacity_covers_sixteen_rank_base_mesh() -> None:
     namelist = (HERE / "ramses_target1_zoom_ingest.nml").read_text()
     ngridmax = int(re.search(r"^ngridmax=(\d+)$", namelist, re.MULTILINE).group(1))
-    m_refine = float(re.search(r"^m_refine=([0-9.]+)$", namelist, re.MULTILINE).group(1))
+    m_refine = re.search(
+        r"^m_refine=(\d+)\*([0-9.]+)$", namelist, re.MULTILINE
+    )
     base_octs_per_rank = 512**3 / 8 / 16
     assert 0.85 * ngridmax > 1.25 * base_octs_per_rank
-    assert m_refine == 8.0
+    assert int(m_refine.group(1)) >= 10
+    assert float(m_refine.group(2)) == 8.0
 
 
 @pytest.mark.parametrize(
@@ -175,8 +178,11 @@ def test_level11_ingestion_capacity_and_refinement_threshold() -> None:
     ngridmax = int(re.search(r"^ngridmax=(\d+)$", namelist, re.MULTILINE).group(1))
     npartmax = int(re.search(r"^npartmax=(\d+)$", namelist, re.MULTILINE).group(1))
     levelmax = int(re.search(r"^levelmax=(\d+)$", namelist, re.MULTILINE).group(1))
-    m_refine = float(re.search(r"^m_refine=([0-9.]+)$", namelist, re.MULTILINE).group(1))
+    m_refine = re.search(
+        r"^m_refine=(\d+)\*([0-9.]+)$", namelist, re.MULTILINE
+    )
     assert ngridmax == 1_600_000
     assert npartmax == 12_000_000
     assert levelmax == 11
-    assert m_refine == 8.0
+    assert int(m_refine.group(1)) >= levelmax
+    assert float(m_refine.group(2)) == 8.0

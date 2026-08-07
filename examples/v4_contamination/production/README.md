@@ -101,9 +101,12 @@ This is a format, mask, and particle-ID regression only.  It is not a
 production zoom evolution and does not set the final nested hierarchy.
 Because `nexpand=1`, lagRamses is expected to add a one-oct boundary layer;
 the level-10 grid count can therefore exceed the exact target refmap count.
-The one-step check retains the standard `m_refine=8` particle criterion;
-setting this threshold to zero would request whole-box level-10 refinement
-after the first step and is not a valid way to disable dynamic refinement.
+The one-step check retains the standard eight-particle refinement criterion.
+The namelist repeats the value through every active level because
+`m_refine` is a level array.  A single scalar would set only its first entry
+and leave the zoom levels disabled.  Setting the array to zero would request
+whole-box refinement after the first step and is not a valid way to disable
+dynamic refinement.
 
 The next scale gate preserves the same 64 Mpc/h patch while adding an
 effective `2048^3` level.  The second `zoom_grid 1 256` command is relative to

@@ -39,7 +39,7 @@ epsilon=1.d-4
 /
 
 &REFINE_PARAMS
-m_refine=8.0
+m_refine=11*8.0
 ivar_refine=0
 /
 
