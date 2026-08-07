@@ -109,11 +109,11 @@ def main() -> int:
         (entry for entry in catalogue["candidates"] if entry["selected"]),
         key=lambda entry: entry["target_rank"],
     )
-    if len(targets) != 3:
-        raise AssertionError(f"expected three selected targets, found {len(targets)}")
+    if not targets:
+        raise AssertionError("the target catalogue contains no selected targets")
 
     expected_particles = args.grid_size**3
-    target_lookup = np.full(expected_particles, -1, dtype=np.int8)
+    target_lookup = np.full(expected_particles, -1, dtype=np.int16)
     target_ids: list[np.ndarray] = []
     for index, target in enumerate(targets):
         ids = np.loadtxt(target_root / target["id_file"], dtype=np.int64, ndmin=1)
@@ -179,8 +179,18 @@ def main() -> int:
         results.append(
             {
                 "target_rank": target["target_rank"],
+                "mass_rank": target.get("mass_rank"),
                 "halo_id": target["halo_id"],
                 "particle_count": target["particle_count"],
+                "comparison_tier": target.get("comparison_tier"),
+                "maximum_lagrangian_width_mpc_h": (
+                    max(target["lagrangian_width"]) * args.box_size
+                    if target.get("lagrangian_width") is not None
+                    else None
+                ),
+                "level14_selected_particles": target.get(
+                    "level14_selected_particles"
+                ),
                 "tracked_circular_centre": tracked_centre,
                 "tracked_circular_concentration": tuple(item[1] for item in means),
                 "void_centre": centre,
@@ -232,13 +242,17 @@ def main() -> int:
     np.savez(output_dir / "void_profiles.npz", **profiles)
 
     figure, axis = plt.subplots(figsize=(6.5, 4.5))
-    colors = ("#0072B2", "#D55E00", "#009E73")
+    colors = plt.get_cmap("tab10")(np.linspace(0.0, 0.9, len(results)))
     for index, result in enumerate(results):
         axis.plot(
             radii,
             profiles[f"target_{index + 1:02d}_enclosed_delta"],
             color=colors[index],
-            label=f"target {index + 1} (HOP {result['halo_id']})",
+            label=(
+                f"{result['comparison_tier']} rank {result['mass_rank']}"
+                if result["comparison_tier"] is not None
+                else f"target {index + 1} (HOP {result['halo_id']})"
+            ),
         )
         radius = result["r_enclosed_delta_minus_0p8_mpc_h"]
         if radius is not None:
