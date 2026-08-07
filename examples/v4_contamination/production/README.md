@@ -233,25 +233,29 @@ python3 plot_compact_level14_handoff.py \
 
 The initial diagnostic snapshot is written before the first leapfrog step and
 must not be used as a restart.  The hand-off also writes a post-step checkpoint
-at `a=0.0221607` (`output_00002`, `nstep_coarse=1`).  The restart verifier
-requires exact equality of all 260,317,198 particle IDs between the pre-step
-and post-step snapshots.  After this gate passes, run the first compact
-level-14 zero-redshift DMO evolution manually on LagEunha with 64 MPI ranks and
-one OpenMP thread per rank:
+at `a=0.0221607` (`output_00002`, `nstep_coarse=1`).  The checkpoint verifier
+requires exact equality of all 260,317,198 particle IDs between the two
+snapshots.  However, two controlled restart probes showed a particle-tree
+failure from `output_00001` and a collapsed fine-level timestep from
+`output_00002`, even though the checkpoint payload and IDs are valid.  The
+production evolution therefore avoids this RAMSES restart path and rereads the
+already verified GRAFIC hierarchy without regenerating the ICs.
+
+Run the first compact level-14 zero-redshift DMO evolution manually on
+LagEunha with 64 MPI ranks and one OpenMP thread per rank:
 
 ```bash
 ssh lageunha \
   /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact726_level14_z0_lageunha.sh
 ```
 
-The runner links, rather than copies, the 35 GiB post-step checkpoint into a new
-run directory at
-`/gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_z0`.  It writes five
-new snapshots at `a=0.10`, 0.25, 0.50, 0.75, and 1.00 and can resume from the
-latest complete output after a cleanly recorded failure.  The final gate
-requires the checkpoint plus five scheduled snapshots, the level-9 through
-level-14 hierarchy, no star particles, and exact equality of the 260,317,198
-initial and final particle-ID sets.
+The runner links, rather than copies, the six-level GRAFIC hierarchy into
+`/gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_z0`.  It writes the
+initial state at `a=0.02` and five scheduled snapshots at `a=0.10`, 0.25, 0.50,
+0.75, and 1.00.  A failed continuous run is not resumed until the RAMSES
+restart defect is fixed.  The final gate requires all six snapshots, the
+level-9 through level-14 hierarchy, no star particles, and exact equality of
+the 260,317,198 initial and final particle-ID sets.
 
 This collisionless run deliberately leaves `void_refine` disabled.  Its first
 purpose is to measure the dwarf-halo yield and the drift of coarse particles

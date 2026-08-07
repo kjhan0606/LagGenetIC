@@ -35,7 +35,7 @@ def check_outputs(
     run_dir: Path,
     expected_ranks: int,
     expected_outputs: int = 6,
-    first_index: int = 2,
+    first_index: int = 1,
 ) -> tuple[Path, Path]:
     outputs = sorted(path for path in run_dir.glob("output_[0-9]*") if path.is_dir())
     expected_names = [
@@ -76,10 +76,10 @@ def check_outputs(
 
     if np.any(np.diff(scale_factors) <= 0.0):
         raise AssertionError(f"snapshot scale factors are not increasing: {scale_factors}")
-    if not 0.0220 <= scale_factors[0] <= 0.0223:
+    if not 0.0199 <= scale_factors[0] <= 0.0201:
         raise AssertionError(
-            f"restart snapshot scale factor is {scale_factors[0]}, "
-            "expected a=0.0221607"
+            f"initial snapshot scale factor is {scale_factors[0]}, "
+            "expected a=0.02"
         )
     if not 0.999 <= scale_factors[-1] <= 1.02:
         raise AssertionError(f"final scale factor is {scale_factors[-1]}, expected a=1")
@@ -266,9 +266,7 @@ def main() -> int:
         raise AssertionError(f"{run_dir / 'ramses.log'}: capacity failure is present")
 
     print("== VoidSim compact rank-726 level-14 z=0 DMO verification ==")
-    initial_output, final_output = check_outputs(
-        run_dir, args.ranks, args.outputs, first_index=2
-    )
+    initial_output, final_output = check_outputs(run_dir, args.ranks, args.outputs)
     check_id_conservation(
         initial_output,
         final_output,

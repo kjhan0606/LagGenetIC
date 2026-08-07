@@ -52,14 +52,15 @@ def write_output(run_dir: Path, index: int, aexp: float, ranks: int = 2) -> Path
     return output
 
 
-def test_z0_namelist_restarts_verified_hierarchy() -> None:
+def test_z0_namelist_reads_verified_grafic_hierarchy() -> None:
     namelist = (HERE / "ramses_compact726_level14_z0.nml").read_text()
-    assert re.search(r"^nrestart=2$", namelist, re.MULTILINE)
+    assert re.search(r"^nrestart=0$", namelist, re.MULTILINE)
     assert re.search(r"^noutput=5$", namelist, re.MULTILINE)
     assert re.search(
         r"^aout=0\.10,0\.25,0\.50,0\.75,1\.00$", namelist, re.MULTILINE
     )
-    assert re.search(r"^&INIT_PARAMS\n/$", namelist, re.MULTILINE)
+    assert re.search(r"^filetype='grafic'$", namelist, re.MULTILINE)
+    assert len(re.findall(r"^initfile\([1-6]\)=", namelist, re.MULTILINE)) == 6
     assert re.search(r"^levelmin=9$", namelist, re.MULTILINE)
     assert re.search(r"^levelmax=14$", namelist, re.MULTILINE)
     assert re.search(r"^m_refine=15\*8\.0$", namelist, re.MULTILINE)
@@ -68,19 +69,19 @@ def test_z0_namelist_restarts_verified_hierarchy() -> None:
 
 def test_accepts_initial_state_and_five_scheduled_outputs(tmp_path: Path) -> None:
     for index, aexp in enumerate(
-        (0.0221607, 0.10, 0.25, 0.50, 0.75, 1.00), start=2
+        (0.02, 0.10, 0.25, 0.50, 0.75, 1.00), start=1
     ):
         write_output(tmp_path, index, aexp)
 
     initial, final = check_outputs(tmp_path, expected_ranks=2)
 
-    assert initial.name == "output_00002"
-    assert final.name == "output_00007"
+    assert initial.name == "output_00001"
+    assert final.name == "output_00006"
 
 
 def test_rejects_snapshot_without_complete_marker(tmp_path: Path) -> None:
     for index, aexp in enumerate(
-        (0.0221607, 0.10, 0.25, 0.50, 0.75, 1.00), start=2
+        (0.02, 0.10, 0.25, 0.50, 0.75, 1.00), start=1
     ):
         output = write_output(tmp_path, index, aexp)
     (output / "COMPLETE").unlink()
