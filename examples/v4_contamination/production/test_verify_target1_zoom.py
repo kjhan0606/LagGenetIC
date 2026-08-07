@@ -98,7 +98,7 @@ def test_multilevel_ramses_particle_accounting(tmp_path: Path) -> None:
     output = ramses / "output_00001"
     output.mkdir(parents=True)
     (ramses / "ramses.log").write_text(
-        "Level 2 has 1 grids\nLevel 3 has 8 grids\n"
+        "Level 2 has 0 grids\nLevel 2 has 1 grids\nLevel 3 has 8 grids\n"
     )
     ids = np.concatenate(
         (np.arange(7, dtype="<i8"), np.arange(8, 72, dtype="<i8"))

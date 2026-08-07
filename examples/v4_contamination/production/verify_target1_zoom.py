@@ -187,24 +187,30 @@ def check_ramses(
     ranks: int,
 ) -> tuple[dict[int, int], int]:
     log = (ramses_case / "ramses.log").read_text()
-    reported_grids: dict[int, int] = {}
-    for level_text, grids_text in re.findall(
-        r"Level\s+(\d+) has\s+(\d+) grids", log
-    ):
-        reported_grids.setdefault(int(level_text), int(grids_text))
     base_level = base_size.bit_length() - 1
     if 2**base_level != base_size:
         raise ValueError("base size must be a power of two")
     expected_levels = list(
         range(base_level + 1, base_level + 1 + len(fine_cube_cells))
     )
+    initial_grid_counts: dict[int, int] = {}
+    for level_text, grids_text in re.findall(
+        r"Level\s+(\d+) has\s+(\d+) grids", log
+    ):
+        level = int(level_text)
+        if level in expected_levels:
+            initial_grid_counts[level] = int(grids_text)
+        if level == expected_levels[-1] and all(
+            expected in initial_grid_counts for expected in expected_levels
+        ):
+            break
     grid_counts = {}
     for offset, (level, capacity) in enumerate(
         zip(expected_levels, fine_cube_cells, strict=True)
     ):
-        if level not in reported_grids:
+        if level not in initial_grid_counts:
             raise AssertionError(f"lagRamses did not report a level-{level} mesh")
-        grids = reported_grids[level]
+        grids = initial_grid_counts[level]
         minimum = target_count * 8**offset
         if grids < minimum:
             raise AssertionError(
