@@ -76,7 +76,11 @@ def main() -> int:
     }
     particle_match = re.search(r"(\d+) particles over (\d+) ranks", verification)
     mean_match = re.search(r"target mean delta=([+\-0-9.eE]+)", verification)
-    if particle_match is None or mean_match is None or sorted(measured_grids) != levels.tolist():
+    if (
+        particle_match is None
+        or mean_match is None
+        or sorted(measured_grids) != levels[1:].tolist()
+    ):
         raise ValueError("verified RAMSES hierarchy summary is incomplete")
 
     timing_files = {
@@ -130,7 +134,9 @@ def main() -> int:
         color="#4c78a8",
         label="dense GRAFIC cells",
     )
-    grid_values = np.asarray([measured_grids[level] for level in levels])
+    grid_values = np.asarray(
+        [measured_grids.get(level, np.nan) for level in levels], dtype=float
+    )
     axes[0].bar(
         x + 0.18,
         grid_values,
@@ -148,6 +154,17 @@ def main() -> int:
             fontsize=7.5,
             rotation=45,
         )
+    for xpos, value in zip(x + 0.18, grid_values, strict=True):
+        if np.isfinite(value):
+            axes[0].annotate(
+                human_count(int(value)),
+                (xpos, value),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                fontsize=7.5,
+                rotation=45,
+            )
     axes[0].set_yscale("log")
     axes[0].set_xticks(x, [str(level) for level in levels])
     axes[0].set_xlabel("mesh level")
@@ -160,6 +177,7 @@ def main() -> int:
     colors = ["#72b7b2", "#4c78a8", "#54a24b", "#e45756", "#b279a2"]
     bars = axes[1].barh(stage_names, wall_times, color=colors)
     axes[1].bar_label(bars, fmt="%.1f s", padding=3, fontsize=8)
+    axes[1].set_xlim(0.0, 1.17 * float(wall_times.max()))
     axes[1].invert_yaxis()
     axes[1].set_xlabel("wall time [s]")
     axes[1].grid(axis="x", alpha=0.25)
