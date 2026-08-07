@@ -85,6 +85,35 @@ python3 measure_inverted_voids.py \
 The reported outermost radius with enclosed `delta <= -0.8` is explicitly a
 pre-watershed diagnostic, not the final catalogue effective radius.
 
+Build the matching halo catalogue from the completed inverted parent on
+LagEunha with:
+
+```bash
+ssh lageunha \
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_inverted_parent_hop_lageunha.sh
+```
+
+The launcher passes a short relative snapshot prefix because the legacy HOP
+RAMSES reader has an 80-byte input-path buffer.  It otherwise retains the
+same density and regrouping thresholds as the normal-parent catalogue.
+
+The periodic grid-watershed diagnostic assigns each cell of the smoothed
+`256^3` density field to a local minimum.  It then merges zones only across
+ridges below 0.2 times the mean density.  Supply the current and comparison
+target catalogues together to check their effective volumes and basin
+overlaps:
+
+```bash
+python3 measure_void_watershed.py \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/evolution/output_00006 \
+  /gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/watershed_grid256 \
+  --catalogue current=/gpfs/kjhan/VoidSim/v4_parent_n512/inverted_parent_z0/void_analysis/void_properties.json \
+  --catalogue comparison=/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0/candidate_void_comparison/void_analysis/void_properties.json
+```
+
+This grid calculation is a sample-design diagnostic.  Its output is not
+labelled as a particle-Voronoi ZOBOV catalogue.
+
 After the inverted parent and preliminary profile gates pass, the target-1
 hand-off regression creates a matched normal/inverted two-level GRAFIC pair.
 The selected Lagrangian span is 48 Mpc/h, so a centered 128-cell fine grid
