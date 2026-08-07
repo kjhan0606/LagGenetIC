@@ -135,7 +135,7 @@ def plot_counts(
         )
     axes[0].set_xticks(x, labels, rotation=45, ha="right")
     axes[0].set_ylabel("halo count in watershed")
-    axes[0].legend(frameon=False, fontsize=8)
+    handles, legend_labels = axes[0].get_legend_handles_labels()
     primary = thresholds[0]
     key = f"n_halo_ge_{primary}_particles"
     tier_colors = {"current": "#303030", "moderate": "#2b83ba", "compact": "#d95f02"}
@@ -169,7 +169,16 @@ def plot_counts(
             va="top",
             fontweight="bold",
         )
-    figure.tight_layout()
+    figure.legend(
+        handles,
+        legend_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.28, 1.01),
+        ncol=len(thresholds),
+        frameon=False,
+        fontsize=8,
+    )
+    figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
     figure.savefig(output, dpi=180)
     plt.close(figure)
 
