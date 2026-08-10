@@ -7,7 +7,10 @@ V4_ROOT=${V4_WORKROOT:-/gpfs/kjhan/VoidSim/v4_parent_n512}
 V4_ROOT=$(realpath -m "$V4_ROOT")
 HANDOFF="$V4_ROOT/compact726_level14_pilot"
 GRAFIC_SOURCE="$HANDOFF/genetic"
-RUNDIR="$V4_ROOT/compact726_level14_z0"
+DEFAULT_RUNDIR="$V4_ROOT/compact726_level14_z0"
+RUNDIR=${V4_Z0_RUNDIR:-$DEFAULT_RUNDIR}
+RUNDIR=$(realpath -m "$RUNDIR")
+NGRIDMAX=${V4_Z0_NGRIDMAX:-3000000}
 RAMSES_SOURCE="$HANDOFF/ramses/ramses_final3d"
 EXPECTED_RAMSES_SHA256=ce3e5a14c22639fd14e3c70092694eeb2b6fb3a009aefafdd7e20fbf585a592e
 
@@ -15,6 +18,17 @@ case "$V4_ROOT" in
     /gpfs/kjhan/*) ;;
     *) echo "V4_WORKROOT must be below /gpfs/kjhan" >&2; exit 2 ;;
 esac
+case "$RUNDIR" in
+    "$V4_ROOT"/compact726_level14_z0*) ;;
+    *) echo "V4_Z0_RUNDIR must be a compact726_level14_z0 run below V4_WORKROOT" >&2; exit 2 ;;
+esac
+case "$NGRIDMAX" in
+    ''|*[!0-9]*) echo "V4_Z0_NGRIDMAX must be an integer" >&2; exit 2 ;;
+esac
+if [ "$NGRIDMAX" -lt 3000000 ]; then
+    echo "V4_Z0_NGRIDMAX must not be smaller than the verified 3000000-grid pool" >&2
+    exit 2
+fi
 if [ "$(hostname | tr '[:upper:]' '[:lower:]')" != "lageunha" ]; then
     echo "this launcher must run on LagEunha, not $(hostname)" >&2
     exit 2
@@ -62,6 +76,11 @@ fi
 mkdir -p "$RUNDIR"
 install -m 0644 "$HERE/ramses_compact726_level14_z0.nml" \
     "$RUNDIR/ramses.nml"
+sed -i "s/^ngridmax=.*/ngridmax=$NGRIDMAX/" "$RUNDIR/ramses.nml"
+if ! grep -qx "ngridmax=$NGRIDMAX" "$RUNDIR/ramses.nml"; then
+    echo "failed to stage the requested ngridmax=$NGRIDMAX" >&2
+    exit 2
+fi
 install -m 0755 "$HERE/verify_compact_level14_z0.py" \
     "$RUNDIR/verify_compact_level14_z0.py"
 install -m 0644 "$SOURCE_ROOT/examples/v2_hop_id_file/hop_to_genetic_id.py" \
@@ -89,7 +108,9 @@ fi
     echo "ramses_binary_sha256=$actual_ramses_sha256"
     echo "ranks=64"
     echo "openmp_threads=1"
+    echo "ngridmax=$NGRIDMAX"
     echo "void_refine=false"
+    sha256sum "$HERE/run_compact726_level14_z0_lageunha.sh"
     sha256sum "$RUNDIR/ramses.nml" "$RUNDIR/ramses_final3d" \
         "$RUNDIR/verify_compact_level14_z0.py" \
         "$RUNDIR/hop_to_genetic_id.py"
@@ -141,4 +162,4 @@ echo "[2/2] verify output sequence and exact initial/final particle-ID equality"
 } >> "$RUNDIR/provenance.txt"
 touch "$RUNDIR/.complete"
 status=complete
-echo "V4 COMPACT RANK-726 LEVEL-14 Z=0 DMO EVOLUTION PASSED"
+echo "V4 COMPACT RANK-726 LEVEL-14 Z=0 DMO EVOLUTION PASSED (ngridmax=$NGRIDMAX)"

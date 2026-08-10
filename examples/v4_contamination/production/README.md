@@ -263,6 +263,24 @@ under ordinary particle-count AMR.  The diffuse-gas refinement floor is a
 separate hydrodynamic production choice and should be enabled only after this
 DMO contamination gate is evaluated.
 
+If a continuous evolution exhausts the per-rank RAMSES grid pool, preserve
+that run directory and launch a fresh capacity retry from the verified GRAFIC
+hierarchy.  The launcher accepts `V4_Z0_RUNDIR` and `V4_Z0_NGRIDMAX`, refuses
+run directories outside the compact zero-redshift namespace, and never
+replaces existing output.  For example, the first retry after the
+3,000,000-grid pool failed at `a=0.2804` is
+
+```bash
+ssh lageunha \
+  env V4_Z0_RUNDIR=/gpfs/kjhan/VoidSim/v4_parent_n512/compact726_level14_z0_ngrid8m \
+      V4_Z0_NGRIDMAX=8000000 \
+  /home/kjhan/BACKUP/VoidSim/code/LagGenetIC/examples/v4_contamination/production/run_compact726_level14_z0_lageunha.sh
+```
+
+This is a fresh evolution, not a restart from the failed run.  The latter is
+retained as a diagnostic because the current multilevel RAMSES restart path
+has not passed the particle-tree and fine-timestep probes.
+
 The job is named `void_dmo512`; its run directory is
 `/gpfs/kjhan/VoidSim/v4_parent_n512/dmo_z0`.  The submitter refuses to replace
 simulation output and records the exact binary checksum, its build revision,

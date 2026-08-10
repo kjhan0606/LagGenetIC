@@ -67,6 +67,15 @@ def test_z0_namelist_reads_verified_grafic_hierarchy() -> None:
     assert "void_refine=.true." not in namelist
 
 
+def test_z0_launcher_supports_a_separate_capacity_retry() -> None:
+    launcher = (HERE / "run_compact726_level14_z0_lageunha.sh").read_text()
+    assert "V4_Z0_RUNDIR" in launcher
+    assert "V4_Z0_NGRIDMAX" in launcher
+    assert 'NGRIDMAX=${V4_Z0_NGRIDMAX:-3000000}' in launcher
+    assert 'sed -i "s/^ngridmax=.*/ngridmax=$NGRIDMAX/"' in launcher
+    assert "must not be smaller than the verified 3000000-grid pool" in launcher
+
+
 def test_accepts_initial_state_and_five_scheduled_outputs(tmp_path: Path) -> None:
     for index, aexp in enumerate(
         (0.02, 0.10, 0.25, 0.50, 0.75, 1.00), start=1
