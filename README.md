@@ -93,3 +93,19 @@ Upstream commits at the time of fresh-start:
   subsequent local commits add glass-on-k-section (Phase 4) and the
   `test_glass_consistency` regression test.
 - genetIC: based on `b3622eb` (with the 4 local working-copy modifications)
+
+### lagCAMB transfer-table compatibility
+
+GenetIC accepts the standard 7-column and 13-column CAMB layouts, plus lagCAMB's
+15-column layout (the same first 13 columns followed by `dm_dr` and `dark_rad`).
+The appended columns are ignored; this does not add interacting/dark-radiation
+IC dynamics. For an `A_s`/`k_p` run, supply the table at the requested `zin`:
+the table's amplitude and redshift are used directly without sigma8/growth
+renormalization. The alternative `s8` path expects a z=0 table.
+
+After building, run the real-executable compatibility regression with:
+
+```sh
+cd genetIC/genetIC
+python -m unittest discover -s tests -p test_lagcamb_columns.py
+```

@@ -243,6 +243,7 @@ namespace cosmology {
 
         // Dealing with the update of the CAMB TF output. Both are kept for backward compatibility.
         const int c_old_camb = 7; // number of columns in camb transfer function pre 2015
+        const int c_lag_camb = 15; // lagCAMB appends dm_dr and dark_rad to the standard 13 columns
         const int c_new_camb = 13; // number of columns in camb transfer function post 2015
         int numCols;
         size_t j;
@@ -258,7 +259,7 @@ namespace cosmology {
 #ifdef DEBUG_INFO
           logging::entry() << "Using pre 2015 CAMB transfer function" << std::endl;
 #endif
-        } else if (numCols == c_new_camb) {
+        } else if (numCols == c_new_camb || numCols == c_lag_camb) {
 #ifdef DEBUG_INFO
           logging::entry() << "Using post 2015 CAMB transfer function" << std::endl;
 #endif
